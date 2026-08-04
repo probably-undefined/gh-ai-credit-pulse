@@ -46,7 +46,7 @@ pub(crate) fn build_dashboard(store: &Store, window: Window, now: i64) -> Result
             delta_today: Some(round(usage_since(store, local_midnight_epoch(now), now)?, 3)),
             delta_7d: Some(round(usage_since(store, now - 7 * 86_400, now)?, 3)),
             delta_30d: Some(round(usage_since(store, now - 30 * 86_400, now)?, 3)),
-            rate_per_hour: rate_per_hour.map(|value| round(value, 3)),
+            rate_per_hour: Some(round(rate_per_hour.unwrap_or(0.0), 3)),
             average_per_day: Some(round(average_per_day, 3)),
             projected_at_reset: projected_at_reset.map(|value| round(value, 1)),
             pace_delta: pace_delta.map(|value| round(value, 1)),
@@ -258,6 +258,16 @@ mod tests {
         assert_eq!(dashboard.metrics.delta_1h, Some(10.0));
         assert_eq!(dashboard.metrics.rate_per_hour, Some(10.0));
         assert_eq!(dashboard.series.len(), 3);
+    }
+
+    #[test]
+    fn reports_zero_rate_with_only_one_sample() {
+        let store = Store::in_memory().unwrap();
+        let now = 1_800_000_000;
+        insert(&store, 100.0, now);
+        let dashboard = build_dashboard(&store, Window::OneDay, now).unwrap();
+
+        assert_eq!(dashboard.metrics.rate_per_hour, Some(0.0));
     }
 
     #[test]
