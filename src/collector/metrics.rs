@@ -26,13 +26,14 @@ pub(crate) fn build_dashboard(store: &Store, window: Window, now: i64) -> Result
         }
         _ => 0.0,
     };
-    let rate_per_hour = (rate_window_hours > 0.0)
-        .then(|| delta_between(&six_hour_rows) / rate_window_hours);
+    let rate_per_hour =
+        (rate_window_hours > 0.0).then(|| delta_between(&six_hour_rows) / rate_window_hours);
 
     let cycle_start = cycle_start(current_row.reset_at, now);
     let elapsed_days = ((now - cycle_start) as f64 / 86_400.0).max(1.0 / 24.0);
     let average_per_day = current_used / elapsed_days;
-    let (projected_at_reset, pace_delta) = projection(current_row, now, cycle_start, average_per_day);
+    let (projected_at_reset, pace_delta) =
+        projection(current_row, now, cycle_start, average_per_day);
 
     Ok(DashboardData {
         status: "ok".to_owned(),
@@ -43,7 +44,10 @@ pub(crate) fn build_dashboard(store: &Store, window: Window, now: i64) -> Result
         metrics: Metrics {
             delta_last_sample: Some(round(delta_between(&latest), 3)),
             delta_1h: Some(round(usage_since(store, now - 60 * 60, now)?, 3)),
-            delta_today: Some(round(usage_since(store, local_midnight_epoch(now), now)?, 3)),
+            delta_today: Some(round(
+                usage_since(store, local_midnight_epoch(now), now)?,
+                3,
+            )),
             delta_7d: Some(round(usage_since(store, now - 7 * 86_400, now)?, 3)),
             delta_30d: Some(round(usage_since(store, now - 30 * 86_400, now)?, 3)),
             rate_per_hour: Some(round(rate_per_hour.unwrap_or(0.0), 3)),
@@ -126,7 +130,10 @@ fn downsample(rows: &[SampleRow], max_points: usize) -> Vec<UsageSample> {
 }
 
 fn daily_usage(store: &Store, now: i64, days: usize) -> Result<Vec<DailyUsage>> {
-    let local_now = Local.timestamp_opt(now, 0).single().unwrap_or_else(Local::now);
+    let local_now = Local
+        .timestamp_opt(now, 0)
+        .single()
+        .unwrap_or_else(Local::now);
     let today = local_now.date_naive();
     (0..days)
         .rev()
@@ -136,7 +143,13 @@ fn daily_usage(store: &Store, now: i64, days: usize) -> Result<Vec<DailyUsage>> 
             let end = local_epoch(date + chrono::Days::new(1));
             Ok(DailyUsage {
                 date: date.format("%Y-%m-%d").to_string(),
-                label: date.format("%a").to_string().chars().next().unwrap_or('·').to_string(),
+                label: date
+                    .format("%a")
+                    .to_string()
+                    .chars()
+                    .next()
+                    .unwrap_or('·')
+                    .to_string(),
                 credits: round(usage_since(store, start, now.min(end))?, 3),
             })
         })
@@ -174,7 +187,10 @@ fn cycle_start(reset_at: Option<i64>, now: i64) -> i64 {
             .map_or(now, |value| value.timestamp());
     }
 
-    let local_now = Local.timestamp_opt(now, 0).single().unwrap_or_else(Local::now);
+    let local_now = Local
+        .timestamp_opt(now, 0)
+        .single()
+        .unwrap_or_else(Local::now);
     local_epoch(
         NaiveDate::from_ymd_opt(local_now.year(), local_now.month(), 1)
             .expect("current year and month are valid"),
@@ -191,10 +207,13 @@ fn projection(
         return (None, None);
     };
     let projected = current.credits_used + average_per_day * (reset_at - now) as f64 / 86_400.0;
-    let pace = current.entitlement.filter(|_| reset_at > start).map(|entitlement| {
-        let elapsed = (now - start) as f64 / (reset_at - start) as f64;
-        entitlement * elapsed.clamp(0.0, 1.0) - current.credits_used
-    });
+    let pace = current
+        .entitlement
+        .filter(|_| reset_at > start)
+        .map(|entitlement| {
+            let elapsed = (now - start) as f64 / (reset_at - start) as f64;
+            entitlement * elapsed.clamp(0.0, 1.0) - current.credits_used
+        });
     (Some(projected), pace)
 }
 
@@ -273,9 +292,18 @@ mod tests {
     #[test]
     fn counter_reset_is_not_a_negative_usage_spike() {
         let rows = [
-            SampleRow { credits_used: 299.0, ..sample_row(1) },
-            SampleRow { credits_used: 1.0, ..sample_row(2) },
-            SampleRow { credits_used: 3.0, ..sample_row(3) },
+            SampleRow {
+                credits_used: 299.0,
+                ..sample_row(1)
+            },
+            SampleRow {
+                credits_used: 1.0,
+                ..sample_row(2)
+            },
+            SampleRow {
+                credits_used: 3.0,
+                ..sample_row(3)
+            },
         ];
         assert_eq!(delta_between(&rows), 3.0);
     }
