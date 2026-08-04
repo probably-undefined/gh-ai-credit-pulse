@@ -1,7 +1,7 @@
 use super::model::Snapshot;
 use super::Result;
 use chrono::{DateTime, Utc};
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -214,7 +214,7 @@ impl Store {
     ) -> Result<Vec<SampleRow>> {
         let mut statement = self.connection.prepare(sql)?;
         let rows = statement
-            .query_map(parameters, map_row)?
+            .query_map(params_from_iter(parameters), map_row)?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(rows)
     }
