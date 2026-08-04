@@ -53,14 +53,25 @@ pub(crate) fn fetch_payload(timeout: Duration) -> Result<Value> {
     }
 
     let output = child.wait_with_output().map_err(|error| {
-        Error::Usage(format!("could not read output from {}: {error}", gh.display()))
+        Error::Usage(format!(
+            "could not read output from {}: {error}",
+            gh.display()
+        ))
     })?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let message = stderr.trim().lines().last().or_else(|| stdout.trim().lines().last());
+        let message = stderr
+            .trim()
+            .lines()
+            .last()
+            .or_else(|| stdout.trim().lines().last());
         return Err(Error::Usage(
-            message.unwrap_or("unknown gh error").chars().take(400).collect(),
+            message
+                .unwrap_or("unknown gh error")
+                .chars()
+                .take(400)
+                .collect(),
         ));
     }
 
@@ -91,7 +102,11 @@ pub(crate) fn parse_snapshot(payload: &Value, sampled_at: i64) -> Result<Snapsho
     let credits_used = premium
         .get("credits_used")
         .and_then(number)
-        .or_else(|| entitlement.zip(remaining).map(|(total, left)| (total - left).max(0.0)))
+        .or_else(|| {
+            entitlement
+                .zip(remaining)
+                .map(|(total, left)| (total - left).max(0.0))
+        })
         .ok_or_else(|| {
             Error::Usage(
                 "premium_interactions contains neither credits_used nor usable quota totals"
@@ -131,12 +146,14 @@ pub(crate) fn parse_snapshot(payload: &Value, sampled_at: i64) -> Result<Snapsho
 fn resolve_gh_executable() -> Result<PathBuf> {
     if let Some(override_path) = env::var_os("GH_AI_CREDITS_GH") {
         let candidate = expand_home(PathBuf::from(override_path));
-        return is_executable(&candidate).then_some(candidate.clone()).ok_or_else(|| {
-            Error::Usage(format!(
-                "GH_AI_CREDITS_GH is not executable: {}",
-                candidate.display()
-            ))
-        });
+        return is_executable(&candidate)
+            .then_some(candidate.clone())
+            .ok_or_else(|| {
+                Error::Usage(format!(
+                    "GH_AI_CREDITS_GH is not executable: {}",
+                    candidate.display()
+                ))
+            });
     }
 
     if let Some(path) = env::var_os("PATH") {
