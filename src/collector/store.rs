@@ -52,10 +52,10 @@ impl Store {
     }
 
     fn configure(&self) -> Result<()> {
+        self.connection.pragma_update(None, "busy_timeout", 5_000)?;
         self.connection.pragma_update(None, "journal_mode", "WAL")?;
         self.connection
             .pragma_update(None, "synchronous", "NORMAL")?;
-        self.connection.pragma_update(None, "busy_timeout", 5_000)?;
         Ok(())
     }
 
@@ -166,6 +166,39 @@ impl Store {
             .map_err(Into::into)
     }
 
+    pub fn latest_sample_at(&self) -> Result<Option<i64>> {
+        self.connection
+            .query_row("SELECT MAX(sampled_at) FROM samples", [], |row| row.get(0))
+            .map_err(Into::into)
+    }
+
+    pub fn try_acquire_sample_lease(
+        &self,
+        owner: &str,
+        now: i64,
+        lease_until: i64,
+    ) -> Result<bool> {
+        let value = format!("{lease_until}:{owner}");
+        let changed = self.connection.execute(
+            "
+            INSERT INTO metadata(key, value) VALUES('sample_lease', ?1)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            WHERE CAST(metadata.value AS INTEGER) <= ?2
+            ",
+            params![value, now],
+        )?;
+        Ok(changed == 1)
+    }
+
+    pub fn release_sample_lease(&self, owner: &str, lease_until: i64) -> Result<()> {
+        let value = format!("{lease_until}:{owner}");
+        self.connection.execute(
+            "DELETE FROM metadata WHERE key = 'sample_lease' AND value = ?",
+            [value],
+        )?;
+        Ok(())
+    }
+
     pub fn export(&self, writer: impl Write) -> Result<()> {
         let rows = self.query_rows("SELECT * FROM samples ORDER BY sampled_at, id", [])?;
         let mut csv = csv::Writer::from_writer(writer);
@@ -241,4 +274,57 @@ fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SampleRow> {
 
 fn optional_number(value: Option<f64>) -> String {
     value.map(|number| number.to_string()).unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, Barrier};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temporary_database() -> std::path::PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time is after the Unix epoch")
+            .as_nanos();
+        std::env::temp_dir()
+            .join(format!("gh-ai-credit-pulse-{}-{unique}", std::process::id()))
+            .join("history.sqlite3")
+    }
+
+    #[test]
+    fn only_one_process_acquires_the_sampling_lease() {
+        let path = temporary_database();
+        Store::open(&path).unwrap();
+        let barrier = Arc::new(Barrier::new(2));
+        let handles = ["first", "second"].map(|owner| {
+            let path = path.clone();
+            let barrier = Arc::clone(&barrier);
+            std::thread::spawn(move || {
+                let store = Store::open(&path).unwrap();
+                barrier.wait();
+                store.try_acquire_sample_lease(owner, 100, 130).unwrap()
+            })
+        });
+        let acquired = handles
+            .into_iter()
+            .map(|handle| handle.join().unwrap())
+            .filter(|value| *value)
+            .count();
+        assert_eq!(acquired, 1);
+        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn expired_lease_can_be_replaced_without_old_owner_releasing_new_lease() {
+        let store = Store::in_memory().unwrap();
+        assert!(store.try_acquire_sample_lease("old", 100, 110).unwrap());
+        assert!(!store.try_acquire_sample_lease("new", 109, 120).unwrap());
+        assert!(store.try_acquire_sample_lease("new", 110, 120).unwrap());
+
+        store.release_sample_lease("old", 110).unwrap();
+        assert!(!store.try_acquire_sample_lease("third", 111, 130).unwrap());
+        store.release_sample_lease("new", 120).unwrap();
+        assert!(store.try_acquire_sample_lease("third", 111, 130).unwrap());
+    }
 }
