@@ -60,45 +60,95 @@ download_verified_bundle() {
         exit 1
     fi
 
-    # Resolve the release and both commit-specific asset URLs in one API call.
-    # Unique asset names prevent a rolling `latest` release from mixing files
-    # across CDN cache generations.
-    mapfile -t release_info < <(
-        gh api "repos/${repo}/releases/latest" |
+    # GitHub's /releases/latest endpoint intentionally excludes pre-releases.
+    # Query recent published releases and select the newest canonical build whose
+    # immutable tag, archive name, and checksum all bind to the same commit.
+    release_json=""
+    if ! release_json="$(gh api "repos/${repo}/releases?per_page=30" 2>/dev/null)"; then
+        printf '%s\n' \
+            'No published gh-ai-credit-pulse release is currently available.' \
+            'Installation stopped safely; try again after the release workflow finishes.' >&2
+        exit 1
+    fi
+
+    parsed_info=""
+    if ! parsed_info="$(
+        printf '%s' "${release_json}" |
             /usr/bin/python3 -c '
 import json
 import re
 import sys
 
-release = json.load(sys.stdin)
-pattern = re.compile(r"^gh-ai-credit-pulse-linux-x86_64-([0-9a-f]{12})\.tar\.gz$")
-archives = [asset for asset in release.get("assets", []) if pattern.fullmatch(asset["name"])]
-if release.get("tag_name") != "latest" or len(archives) != 1:
-    raise SystemExit("Latest release has an unexpected tag or asset set")
-archive = archives[0]
-checksums = [
-    asset for asset in release["assets"]
-    if asset["name"] == archive["name"] + ".sha256"
-]
-if len(checksums) != 1:
-    raise SystemExit("Latest release has no unique matching checksum")
-print(release["tag_name"])
-print(archive["name"])
-print(archive["browser_download_url"])
-print(checksums[0]["browser_download_url"])
+releases = json.load(sys.stdin)
+tag_pattern = re.compile(r"^build-([0-9a-f]{12})$")
+asset_pattern = re.compile(r"^gh-ai-credit-pulse-linux-x86_64-([0-9a-f]{12})\\.tar\\.gz$")
+
+for release in releases:
+    if release.get("draft"):
+        continue
+    tag_match = tag_pattern.fullmatch(release.get("tag_name", ""))
+    if not tag_match:
+        continue
+
+    archives = [
+        asset for asset in release.get("assets", [])
+        if asset_pattern.fullmatch(asset.get("name", ""))
+    ]
+    if len(archives) != 1:
+        continue
+
+    archive = archives[0]
+    archive_match = asset_pattern.fullmatch(archive["name"])
+    if archive_match.group(1) != tag_match.group(1):
+        continue
+
+    checksums = [
+        asset for asset in release.get("assets", [])
+        if asset.get("name") == archive["name"] + ".sha256"
+    ]
+    if len(checksums) != 1:
+        continue
+
+    print(release["tag_name"])
+    print(archive["name"])
+    print(archive["browser_download_url"])
+    print(checksums[0]["browser_download_url"])
+    break
+else:
+    raise SystemExit("No valid published build release found")
 '
-    )
-    if ((${#release_info[@]} != 4)); then
-        printf 'GitHub returned an invalid latest release.\n' >&2
+    )"; then
+        printf '%s\n' \
+            'GitHub returned no valid published build release.' \
+            'Installation stopped safely; no files were changed.' >&2
         exit 1
     fi
+
+    mapfile -t release_info <<<"${parsed_info}"
+    if ((${#release_info[@]} != 4)); then
+        printf 'GitHub returned invalid release metadata.\n' >&2
+        exit 1
+    fi
+
     release_tag="${release_info[0]}"
     bundle_name="${release_info[1]}"
     archive_url="${release_info[2]}"
     checksum_url="${release_info[3]}"
-    if [[ "${release_tag}" != latest || ! "${bundle_name}" =~ ${bundle_pattern} ]]; then
-        printf 'GitHub returned an unexpected release: %s / %s\n' \
-            "${release_tag}" "${bundle_name}" >&2
+
+    if [[ ! "${release_tag}" =~ ^build-([0-9a-f]{12})$ ]]; then
+        printf 'GitHub returned an unexpected release tag: %s\n' "${release_tag}" >&2
+        exit 1
+    fi
+    tag_sha="${BASH_REMATCH[1]}"
+
+    if [[ ! "${bundle_name}" =~ ${bundle_pattern} ]]; then
+        printf 'GitHub returned an unexpected release asset: %s\n' "${bundle_name}" >&2
+        exit 1
+    fi
+    asset_sha="${BASH_REMATCH[1]}"
+
+    if [[ "${tag_sha}" != "${asset_sha}" ]]; then
+        printf 'Release tag and asset commit do not match.\n' >&2
         exit 1
     fi
 
