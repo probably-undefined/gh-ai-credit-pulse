@@ -5,11 +5,13 @@ set -euo pipefail
 # against the canonical repository, never against a similarly named fork.
 readonly repo="probably-undefined/gh-ai-credit-pulse"
 readonly uuid="gh-ai-credit-pulse@probably-undefined"
-readonly bundle_name="gh-ai-credit-pulse-linux-x86_64.tar.gz"
+readonly bundle_pattern='^gh-ai-credit-pulse-linux-x86_64-([0-9a-f]{12})\.tar\.gz$'
 
 data_home="${XDG_DATA_HOME:-${HOME}/.local/share}"
 target_dir="${data_home}/gh-ai-credit-pulse"
 extension_dir="${data_home}/gnome-shell/extensions/${uuid}"
+applications_dir="${data_home}/applications"
+icons_dir="${data_home}/icons/hicolor/256x256/apps"
 bin_dir="${HOME}/.local/bin"
 from_bundle=false
 enable_extension=true
@@ -58,15 +60,47 @@ download_verified_bundle() {
         exit 1
     fi
 
-    # Resolve the moving `latest` pointer exactly once. Downloading the bundle
-    # and checksum through separate `latest` redirects can otherwise mix two
-    # releases briefly while GitHub/CDN caches converge.
-    release_tag="$(gh api "repos/${repo}/releases/latest" --jq '.tag_name')"
-    if [[ ! "${release_tag}" =~ ^build-[0-9a-f]{12}$ ]]; then
-        printf 'GitHub returned an unexpected release tag: %s\n' "${release_tag}" >&2
+    # Resolve the release and both commit-specific asset URLs in one API call.
+    # Unique asset names prevent a rolling `latest` release from mixing files
+    # across CDN cache generations.
+    mapfile -t release_info < <(
+        gh api "repos/${repo}/releases/latest" |
+            /usr/bin/python3 -c '
+import json
+import re
+import sys
+
+release = json.load(sys.stdin)
+pattern = re.compile(r"^gh-ai-credit-pulse-linux-x86_64-([0-9a-f]{12})\.tar\.gz$")
+archives = [asset for asset in release.get("assets", []) if pattern.fullmatch(asset["name"])]
+if release.get("tag_name") != "latest" or len(archives) != 1:
+    raise SystemExit("Latest release has an unexpected tag or asset set")
+archive = archives[0]
+checksums = [
+    asset for asset in release["assets"]
+    if asset["name"] == archive["name"] + ".sha256"
+]
+if len(checksums) != 1:
+    raise SystemExit("Latest release has no unique matching checksum")
+print(release["tag_name"])
+print(archive["name"])
+print(archive["browser_download_url"])
+print(checksums[0]["browser_download_url"])
+'
+    )
+    if ((${#release_info[@]} != 4)); then
+        printf 'GitHub returned an invalid latest release.\n' >&2
         exit 1
     fi
-    release_base="https://github.com/${repo}/releases/download/${release_tag}"
+    release_tag="${release_info[0]}"
+    bundle_name="${release_info[1]}"
+    archive_url="${release_info[2]}"
+    checksum_url="${release_info[3]}"
+    if [[ "${release_tag}" != latest || ! "${bundle_name}" =~ ${bundle_pattern} ]]; then
+        printf 'GitHub returned an unexpected release: %s / %s\n' \
+            "${release_tag}" "${bundle_name}" >&2
+        exit 1
+    fi
 
     download_dir="$(mktemp -d)"
     archive="${download_dir}/${bundle_name}"
@@ -76,9 +110,9 @@ download_verified_bundle() {
 
     printf 'Downloading verified release %s from %s…\n' "${release_tag}" "${repo}"
     curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
-        "${release_base}/${bundle_name}" -o "${archive}"
+        "${archive_url}" -o "${archive}"
     curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
-        "${release_base}/${bundle_name}.sha256" -o "${checksum}"
+        "${checksum_url}" -o "${checksum}"
 
     (cd "${download_dir}" && sha256sum --check --strict "${bundle_name}.sha256")
     gh attestation verify "${archive}" \
@@ -119,6 +153,8 @@ if [[ "${from_bundle}" == false ]]; then
 fi
 
 if [[ ! -x "${project_dir}/gh-ai-credit-pulse-gui" ||
+      ! -f "${project_dir}/assets/io.github.probably_undefined.GhAiCreditPulse.desktop" ||
+      ! -f "${project_dir}/assets/gh-ai-credit-pulse.png" ||
       ! -f "${project_dir}/extension/extension.js" ||
       ! -f "${project_dir}/scripts/gh_ai_credits.py" ]]; then
     printf 'Verified release bundle is incomplete; refusing to install.\n' >&2
@@ -135,13 +171,26 @@ if [[ -e "${target_dir}" ]]; then
     printf 'Existing installation backed up to %s\n' "${backup_dir}"
 fi
 
-install -d -- "${target_dir}/scripts" "${bin_dir}"
+install -d -- "${target_dir}/assets" "${target_dir}/scripts" \
+    "${applications_dir}" "${icons_dir}" "${bin_dir}"
 install -m 0755 -- "${project_dir}/gh-ai-credit-pulse-gui" "${target_dir}/gh-ai-credit-pulse-gui"
 install -m 0755 -- "${project_dir}/install.sh" "${target_dir}/install.sh"
 install -m 0755 -- "${project_dir}/gh-ai-credit-pulse" "${bin_dir}/gh-ai-credit-pulse"
 install -m 0755 -- "${project_dir}/scripts/gh_ai_credits.py" "${target_dir}/scripts/"
+install -m 0644 -- "${project_dir}/assets/gh-ai-credit-pulse.png" \
+    "${target_dir}/assets/gh-ai-credit-pulse.png"
 install -m 0644 -- "${project_dir}/VERSION" "${target_dir}/VERSION"
 install -m 0644 -- "${project_dir}/README.md" "${target_dir}/README.md"
+install -m 0644 -- "${project_dir}/assets/gh-ai-credit-pulse.png" \
+    "${icons_dir}/gh-ai-credit-pulse.png"
+sed "s|@EXEC@|${bin_dir}/gh-ai-credit-pulse|g" \
+    "${project_dir}/assets/io.github.probably_undefined.GhAiCreditPulse.desktop" > \
+    "${applications_dir}/io.github.probably_undefined.GhAiCreditPulse.desktop"
+chmod 0644 "${applications_dir}/io.github.probably_undefined.GhAiCreditPulse.desktop"
+
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database "${applications_dir}" >/dev/null 2>&1 || true
+fi
 
 if [[ "${enable_extension}" == true ]]; then
     require_command gnome-extensions

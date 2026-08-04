@@ -24,8 +24,9 @@ curl -fsSL https://raw.githubusercontent.com/probably-undefined/gh-ai-credit-pul
 
 The installer downloads the latest provenance-attested release bundle, verifies
 its SHA-256 checksum and GitHub build identity, installs the GNOME 42 extension,
-enables it, and creates `~/.local/bin/gh-ai-credit-pulse`. An up-to-date GitHub
-CLI with `gh attestation` support is required; verification fails closed.
+enables it, creates `~/.local/bin/gh-ai-credit-pulse`, and adds an **AI Credit
+Pulse** launcher with its own application icon. An up-to-date GitHub CLI with
+`gh attestation` support is required; verification fails closed.
 
 If GNOME has not discovered a newly installed extension in the running Wayland
 session, log out and back in once, then run:
@@ -98,9 +99,11 @@ as the rolling `latest` release consumed by the installer.
 - Pull requests and forks receive only `contents: read`; they cannot publish.
 - The privileged publish job runs only for this canonical repository's `main`
   branch and never checks out or executes repository code.
-- Releases use unique immutable tags instead of replacing a shared tag.
-- The installer resolves `latest` once and pins both downloads to that exact
-  immutable tag, preventing mixed assets during CDN cache propagation.
+- Releases reuse a single rolling `latest` tag instead of accumulating a tag
+  for every build.
+- Release assets include the source commit in their names. The installer
+  resolves both unique asset URLs in one API response, preventing mixed files
+  during CDN cache propagation.
 - The complete bundle is SHA-256 checked and carries GitHub/Sigstore build
   provenance. The installer verifies the exact signer workflow, canonical
   `main` ref, and GitHub-hosted runner policy before extracting anything.

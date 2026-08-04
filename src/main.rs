@@ -1,6 +1,6 @@
 use iced::widget::{button, column, container, progress_bar, row, text, Row, Space};
 use iced::{
-    Alignment, Background, Border, Color, Element, Length, Shadow, Size, Subscription, Task,
+    window, Alignment, Background, Border, Color, Element, Length, Shadow, Size, Subscription, Task,
     Theme, Vector,
 };
 use serde::Deserialize;
@@ -22,6 +22,7 @@ const MINT: Color = Color::from_rgb(0.204, 0.827, 0.600);
 const PINK: Color = Color::from_rgb(0.957, 0.447, 0.714);
 const AMBER: Color = Color::from_rgb(0.984, 0.749, 0.141);
 const ERROR: Color = Color::from_rgb(0.984, 0.443, 0.522);
+const APPLICATION_ID: &str = "io.github.probably_undefined.GhAiCreditPulse";
 
 fn main() -> iced::Result {
     if env::args().any(|argument| argument == "--version" || argument == "version") {
@@ -32,7 +33,14 @@ fn main() -> iced::Result {
     iced::application(Dashboard::boot, Dashboard::update, Dashboard::view)
         .title("GitHub AI Credit Pulse")
         .theme(app_theme)
-        .window_size(Size::new(1120.0, 760.0))
+        .window(window::Settings {
+            size: Size::new(1120.0, 760.0),
+            platform_specific: window::settings::PlatformSpecific {
+                application_id: APPLICATION_ID.to_owned(),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
         .subscription(Dashboard::subscription)
         .run()
 }
