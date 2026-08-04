@@ -1,9 +1,9 @@
-use iced::widget::{button, column, container, progress_bar, row, text, Row, Space};
-use iced::{
-    window, Alignment, Background, Border, Color, Element, Length, Size, Subscription, Task, Theme,
-};
 use gh_ai_credit_pulse::collector::{
     Collector, Current, DailyUsage, DashboardData, Metrics, UsageSample, Window, default_db_path,
+};
+use iced::widget::{Row, Space, button, column, container, progress_bar, row, text};
+use iced::{
+    Alignment, Background, Border, Color, Element, Length, Size, Subscription, Task, Theme, window,
 };
 use std::env;
 use std::time::Duration;
@@ -129,17 +129,26 @@ impl Dashboard {
             brand,
             Space::new().width(Length::Fill),
             status,
-            button(text(if self.refreshing { "Syncing…" } else { "↻  Refresh" }).size(12))
-                .on_press(Message::Refresh)
-                .padding([9, 14])
-                .style(refresh_button_style),
+            button(
+                text(if self.refreshing {
+                    "Syncing…"
+                } else {
+                    "↻  Refresh"
+                })
+                .size(12)
+            )
+            .on_press(Message::Refresh)
+            .padding([9, 14])
+            .style(refresh_button_style),
         ]
         .spacing(12)
         .align_y(Alignment::Center);
 
         let hero_copy = column![
             kicker("CURRENT BILLING CYCLE", VIOLET),
-            text(money(current.credits_used, false)).size(58).color(TEXT),
+            text(money(current.credits_used, false))
+                .size(58)
+                .color(TEXT),
             row![
                 text(format!("{} AI credits", number(current.credits_used)))
                     .size(13)
@@ -156,7 +165,9 @@ impl Dashboard {
         let allowance_note = if entitlement.is_some() {
             text(pace_label).size(11).color(pace_color)
         } else {
-            text("Allowance not reported by GitHub").size(11).color(MUTED)
+            text("Allowance not reported by GitHub")
+                .size(11)
+                .color(MUTED)
         };
         let cycle_summary = column![
             kicker("ESTIMATED TOTAL", MUTED),
@@ -314,13 +325,7 @@ fn usage_chart<'a>(
             } else {
                 " ".to_owned()
             };
-            bars = bars.push(chart_bar(
-                height,
-                intensity,
-                VIOLET,
-                label,
-                last,
-            ));
+            bars = bars.push(chart_bar(height, intensity, VIOLET, label, last));
         }
         (
             "RECENT ACTIVITY".to_owned(),
@@ -332,7 +337,9 @@ fn usage_chart<'a>(
             container(
                 column![
                     text("Waiting for usage samples").size(17).color(TEXT),
-                    text("The chart appears after the next refresh.").size(11).color(MUTED),
+                    text("The chart appears after the next refresh.")
+                        .size(11)
+                        .color(MUTED),
                 ]
                 .spacing(7)
                 .align_x(Alignment::Center),
@@ -395,7 +402,9 @@ fn chart_bar<'a>(
     column![
         Space::new().height(Length::Fill),
         bar,
-        text(label).size(9).color(if current { VIOLET } else { MUTED }),
+        text(label)
+            .size(9)
+            .color(if current { VIOLET } else { MUTED }),
     ]
     .width(Length::FillPortion(1))
     .height(Length::Fill)
@@ -442,7 +451,9 @@ fn allowance_panel<'a>(
                 Space::new().width(Length::Fill),
                 column![
                     text("DAILY AVG").size(9).color(MUTED),
-                    text(money(metrics.average_per_day, false)).size(18).color(TEXT),
+                    text(money(metrics.average_per_day, false))
+                        .size(18)
+                        .color(TEXT),
                 ]
                 .spacing(3),
             ],
@@ -474,9 +485,7 @@ fn load_dashboard() -> Task<Message> {
 
 fn run_collector() -> Result<DashboardData, String> {
     Collector::open(default_db_path())
-        .and_then(|collector| {
-            collector.sample(Window::OneDay, Duration::from_secs(20), 180)
-        })
+        .and_then(|collector| collector.sample(Window::OneDay, Duration::from_secs(20), 180))
         .map_err(|error| error.to_string())
 }
 
@@ -516,22 +525,22 @@ fn reset_text(epoch: Option<i64>) -> String {
 
 fn pace_label(value: Option<f64>) -> (String, Color) {
     match value {
-        Some(credits) if credits >= 0.0 => {
-            (format!("{} below expected spend", money(Some(credits), false)), MINT)
-        }
+        Some(credits) if credits >= 0.0 => (
+            format!("{} below expected spend", money(Some(credits), false)),
+            MINT,
+        ),
         Some(credits) => (
-            format!("+{} above expected spend", money(Some(credits.abs()), false)),
+            format!(
+                "+{} above expected spend",
+                money(Some(credits.abs()), false)
+            ),
             AMBER,
         ),
         None => ("Not enough data to compare".to_owned(), MUTED),
     }
 }
 
-fn metric_card<'a>(
-    title: &'static str,
-    value: String,
-    detail: String,
-) -> Element<'a, Message> {
+fn metric_card<'a>(title: &'static str, value: String, detail: String) -> Element<'a, Message> {
     container(
         column![
             kicker(title, MUTED),
