@@ -2,18 +2,13 @@
 
 [![build](https://github.com/probably-undefined/gh-ai-credit-pulse/actions/workflows/build.yml/badge.svg)](https://github.com/probably-undefined/gh-ai-credit-pulse/actions/workflows/build.yml)
 
-A modern GitHub Copilot AI-credit dashboard built with Rust and
-[Iced](https://iced.rs/), with native GNOME Shell integration for Ubuntu
-Wayland.
+A GitHub Copilot usage dashboard built with Rust and [Iced](https://iced.rs/),
+with a GNOME Shell extension for Ubuntu Wayland.
 
-The GNOME top bar shows only the current cost, for example `$30.27`. Hovering
-opens a compact dashboard. Clicking **Open full dashboard** launches the
-cross-platform Iced application.
+The GNOME top bar shows the current cost and hourly rate, for example
+`$30.27 · $0.41/h`. Hovering opens the compact dashboard.
 
 The conversion is fixed at **100 AIC = $1.00**.
-
-Version 1.1 adds a violet/cyan theme, billing-cycle totals, hourly and daily
-rates, a 14-day usage chart, and a redesigned GNOME popup.
 
 ## Install
 
@@ -56,7 +51,6 @@ files are backed up before replacement. The SQLite history remains under
 - Linux x86-64 for the current prebuilt release
 - GNOME Shell 42 for the included Ubuntu top-bar extension
 - authenticated [GitHub CLI](https://cli.github.com/)
-- Python 3.10 or newer for the dependency-free collector
 
 Verify the GitHub endpoint:
 
@@ -72,24 +66,31 @@ gh api /copilot_internal/user \
 gh-ai-credit-pulse                 # open the Iced dashboard
 gh-ai-credit-pulse --version
 gh-ai-credit-pulse --self-update
+gh-ai-credit-pulse sample --window 24h | jq
+gh-ai-credit-pulse dashboard --window 7d | jq
+gh-ai-credit-pulse export --output gh-ai-credit-history.csv
 ```
 
-Collector commands remain available from a checkout:
+## Architecture
 
-```bash
-python3 scripts/gh_ai_credits.py sample --window 24h | jq
-python3 scripts/gh_ai_credits.py dashboard --window 7d | jq
-python3 scripts/gh_ai_credits.py export --output gh-ai-credit-history.csv
-```
+- `gh-ai-credit-pulse` is the Iced application.
+- `gh-ai-credit-pulse-collector` is the small headless CLI used by the GNOME
+  extension and shell wrapper.
+- `src/collector/` contains the shared GitHub client, SQLite store, data model,
+  and usage calculations.
+
+The GUI calls the collector library directly. The extension starts the
+headless collector binary. Python is not used at runtime or during installation.
 
 ## Build
 
 ```bash
+cargo test --all-targets
 cargo build --release
 ```
 
 GitHub Actions builds the Linux bundle on every push to `main` and publishes it
-as the rolling `latest` release consumed by the installer.
+as an immutable pre-release consumed by the installer.
 
 ## Supply-chain security
 
