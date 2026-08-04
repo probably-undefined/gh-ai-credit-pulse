@@ -107,7 +107,7 @@ impl Dashboard {
         let (pace_label, pace_color) = if entitlement.is_some() {
             pace_label(metrics.pace_delta)
         } else {
-            ("Plan pace unavailable".to_owned(), MUTED)
+            ("No allowance data".to_owned(), MUTED)
         };
 
         let status = if self.refreshing {
@@ -127,7 +127,7 @@ impl Dashboard {
                 .style(|_| accent_mark_style()),
             column![
                 text("AI CREDIT PULSE").size(18).color(TEXT),
-                text("COPILOT SPEND INTELLIGENCE").size(10).color(MUTED),
+                text("GITHUB COPILOT USAGE").size(10).color(MUTED),
             ]
             .spacing(3),
         ]
@@ -146,7 +146,7 @@ impl Dashboard {
         .align_y(Alignment::Center);
 
         let hero_copy = column![
-            kicker("TOTAL COST THIS CYCLE", VIOLET),
+            kicker("CURRENT BILLING CYCLE", VIOLET),
             text(money(current.credits_used, false)).size(58).color(TEXT),
             row![
                 text(format!("{} AI credits", number(current.credits_used)))
@@ -163,11 +163,11 @@ impl Dashboard {
 
         let cycle_snapshot = container(
             column![
-                kicker("CYCLE FORECAST", CYAN),
+                kicker("ESTIMATED TOTAL", CYAN),
                 text(money(metrics.projected_at_reset, false))
                     .size(24)
                     .color(TEXT),
-                text("Projected cycle cost").size(11).color(MUTED),
+                text("Based on the cycle average").size(11).color(MUTED),
                 text(pace_label).size(11).color(pace_color),
                 text(format!(
                     "{}  ·  {} local samples",
@@ -199,7 +199,7 @@ impl Dashboard {
                 CYAN,
             ),
             metric_card(
-                "6H BURN RATE",
+                "6-HOUR RATE",
                 format!("{}/h", money(metrics.rate_per_hour, false)),
                 format!(
                     "Observed rate  ·  {}/day cycle avg",
@@ -244,7 +244,7 @@ impl Dashboard {
             .size(10)
             .color(MUTED),
             Space::new().width(Length::Fill),
-            text("PRIVATE BY DESIGN").size(10).color(MINT),
+            text("DATA STORED LOCALLY").size(10).color(MINT),
         ];
 
         let mut content = column![header, hero, metrics_row, lower, footer].spacing(16);
@@ -284,7 +284,7 @@ fn daily_chart<'a>(days: &[DailyUsage]) -> Element<'a, Message> {
         bars = bars.push(
             container(
                 column![
-                    text("Collecting daily history").size(17).color(TEXT),
+                    text("Not enough history yet").size(17).color(TEXT),
                     text("The trend appears after usage is recorded on two different days.")
                         .size(11)
                         .color(MUTED),
@@ -339,8 +339,8 @@ fn daily_chart<'a>(days: &[DailyUsage]) -> Element<'a, Message> {
         column![
             row![
                 column![
-                    kicker("DAILY PULSE", VIOLET),
-                    text("Spend recorded over the last 14 days")
+                    kicker("RECORDED USAGE", VIOLET),
+                    text("Last 14 days")
                         .size(11)
                         .color(MUTED),
                 ]
@@ -529,13 +529,13 @@ fn reset_text(epoch: Option<i64>) -> String {
 fn pace_label(value: Option<f64>) -> (String, Color) {
     match value {
         Some(credits) if credits >= 0.0 => {
-            (format!("{} below plan pace", money(Some(credits), false)), MINT)
+            (format!("{} below expected spend", money(Some(credits), false)), MINT)
         }
         Some(credits) => (
-            format!("+{} above plan pace", money(Some(credits.abs()), false)),
+            format!("+{} above expected spend", money(Some(credits.abs()), false)),
             AMBER,
         ),
-        None => ("Building a pace baseline".to_owned(), MUTED),
+        None => ("Not enough data to compare".to_owned(), MUTED),
     }
 }
 

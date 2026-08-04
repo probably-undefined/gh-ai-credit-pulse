@@ -103,7 +103,7 @@ class CreditIndicator extends PanelMenu.Button {
         const hero = new St.BoxLayout({vertical: true, style_class: 'credit-pulse-hero'});
         const heroHeader = new St.BoxLayout();
         heroHeader.add_child(new St.Label({
-            text: 'TOTAL COST THIS CYCLE',
+            text: 'CURRENT BILLING CYCLE',
             x_expand: true,
             style_class: 'credit-pulse-kicker credit-pulse-kicker-violet',
         }));
@@ -121,7 +121,7 @@ class CreditIndicator extends PanelMenu.Button {
         const metrics = new St.BoxLayout({style_class: 'credit-pulse-metrics'});
         [
             ['TODAY', '_today', '_todayDetail'],
-            ['CURRENT RATE', '_rate', '_rateDetail'],
+            ['6-HOUR RATE', '_rate', '_rateDetail'],
             ['PROJECTION', '_projection', '_projectionDetail'],
         ].forEach(([title, valueName, detailName]) => {
             const card = new St.BoxLayout({vertical: true, x_expand: true, style_class: 'credit-pulse-card'});
@@ -137,7 +137,7 @@ class CreditIndicator extends PanelMenu.Button {
         const pulse = new St.BoxLayout({vertical: true, style_class: 'credit-pulse-pulse'});
         const pulseHeader = new St.BoxLayout();
         pulseHeader.add_child(new St.Label({
-            text: '7 DAY PULSE',
+            text: 'LAST 7 DAYS',
             x_expand: true,
             style_class: 'credit-pulse-kicker credit-pulse-kicker-cyan',
         }));
@@ -165,7 +165,7 @@ class CreditIndicator extends PanelMenu.Button {
         pulse.add_child(chart);
         pulse.add_child(labels);
         this._pulseEmpty = new St.Label({
-            text: 'Collecting daily history · trend appears after two active days',
+            text: 'More than one day of history is needed.',
             visible: false,
             style_class: 'credit-pulse-empty',
         });
