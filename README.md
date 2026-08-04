@@ -96,7 +96,8 @@ as the rolling `latest` release consumed by the installer.
   branch and never checks out or executes repository code.
 - Releases use unique immutable tags instead of replacing a shared tag.
 - The complete bundle is SHA-256 checked and carries GitHub/Sigstore build
-  provenance. The installer verifies both before extracting anything.
+  provenance. The installer verifies the exact signer workflow, canonical
+  `main` ref, and GitHub-hosted runner policy before extracting anything.
 - Archive paths and entry types are validated before extraction.
 
 A fork can build its own copy, but it cannot produce an attestation whose
