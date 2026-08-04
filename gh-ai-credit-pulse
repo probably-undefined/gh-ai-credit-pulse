@@ -12,6 +12,13 @@ case "${1:-}" in
     --self-update|self-update|update)
         exec "${install_dir}/install.sh" --update
         ;;
+    collector)
+        shift
+        exec "${install_dir}/gh-ai-credit-pulse-collector" "$@"
+        ;;
+    sample|dashboard|export|--db)
+        exec "${install_dir}/gh-ai-credit-pulse-collector" "$@"
+        ;;
     --version|version)
         if [[ -x "${install_dir}/gh-ai-credit-pulse-gui" ]]; then
             exec "${install_dir}/gh-ai-credit-pulse-gui" --version
