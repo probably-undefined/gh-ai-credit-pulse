@@ -2,7 +2,6 @@
   color: #ddd6fe;
   font-weight: 750;
   padding: 0 6px;
-  text-shadow: 0 0 10px rgba(139, 92, 246, 0.72);
 }
 
 .credit-pulse-menu-item {
@@ -62,7 +61,6 @@
   border-radius: 16px;
   padding: 16px;
   spacing: 6px;
-  box-shadow: 0 8px 26px rgba(100, 62, 190, 0.25);
 }
 
 .credit-pulse-kicker {
@@ -91,7 +89,6 @@
   color: #ffffff;
   font-size: 38px;
   font-weight: 700;
-  text-shadow: 0 0 18px rgba(139, 92, 246, 0.50);
 }
 
 .credit-pulse-metrics {
@@ -147,7 +144,6 @@
   background-gradient-start: #67e8f9;
   background-gradient-end: #0891b2;
   border-color: rgba(103, 232, 249, 0.62);
-  box-shadow: 0 0 12px rgba(34, 211, 238, 0.32);
 }
 
 .credit-pulse-chart-labels {
@@ -186,7 +182,6 @@
   background-gradient-start: #8b5cf6;
   background-gradient-end: #22d3ee;
   border-radius: 5px;
-  box-shadow: 0 0 10px rgba(34, 211, 238, 0.34);
 }
 
 .credit-pulse-error {
