@@ -1,5 +1,7 @@
 # GitHub AI Credit Pulse
 
+[![build](https://github.com/probably-undefined/gh-ai-credit-pulse/actions/workflows/build.yml/badge.svg)](https://github.com/probably-undefined/gh-ai-credit-pulse/actions/workflows/build.yml)
+
 A modern GitHub Copilot AI-credit dashboard built with Rust and
 [Iced](https://iced.rs/), with native GNOME Shell integration for Ubuntu
 Wayland.

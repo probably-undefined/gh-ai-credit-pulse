@@ -1,4 +1,4 @@
-use iced::widget::{button, column, container, horizontal_rule, horizontal_space, progress_bar, row, text};
+use iced::widget::{button, column, container, progress_bar, row, rule, text, Space};
 use iced::{Background, Border, Color, Element, Length, Shadow, Size, Subscription, Task, Theme};
 use serde::Deserialize;
 use std::env;
@@ -23,10 +23,14 @@ fn main() -> iced::Result {
 
     iced::application(Dashboard::boot, Dashboard::update, Dashboard::view)
         .title("GitHub AI Credit Pulse")
-        .theme(|_| Theme::Dark)
+        .theme(app_theme)
         .window_size(Size::new(920.0, 650.0))
         .subscription(Dashboard::subscription)
         .run()
+}
+
+fn app_theme(_: &Dashboard) -> Theme {
+    Theme::Dark
 }
 
 #[derive(Debug, Clone)]
@@ -104,7 +108,7 @@ impl Dashboard {
                 .color(MUTED),
             ]
             .spacing(2),
-            horizontal_space(),
+            Space::new().width(Length::Fill),
             status,
             button("Refresh").on_press(Message::Refresh),
         ]
@@ -135,13 +139,13 @@ impl Dashboard {
             column![
                 row![
                     kicker("RECENT USAGE"),
-                    horizontal_space(),
+                    Space::new().width(Length::Fill),
                     text(format!("{} local samples", self.data.sample_count.unwrap_or(0)))
                         .size(11)
                         .color(MUTED),
                 ]
                 .align_y(iced::Alignment::Center),
-                horizontal_rule(1),
+                rule::horizontal(1),
                 usage_row("Last hour", metrics.delta_1h),
                 usage_row("Today", metrics.delta_today),
                 usage_row("Last 7 days", metrics.delta_7d),
@@ -160,7 +164,7 @@ impl Dashboard {
             column![
                 row![
                     kicker("MONTHLY ALLOWANCE"),
-                    horizontal_space(),
+                    Space::new().width(Length::Fill),
                     text(if entitlement > 0.0 {
                         format!("{} / {}", money(Some(used), false), money(Some(entitlement), false))
                     } else {
@@ -301,7 +305,7 @@ fn metric_card<'a>(title: &'static str, value: String, detail: String) -> Elemen
 fn usage_row<'a>(label: &'static str, value: Option<f64>) -> Element<'a, Message> {
     row![
         text(label).size(13).color(MUTED),
-        horizontal_space(),
+        Space::new().width(Length::Fill),
         text(money(value, true)).size(17).color(TEXT),
     ]
     .align_y(iced::Alignment::Center)

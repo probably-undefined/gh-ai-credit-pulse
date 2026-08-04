@@ -30,7 +30,11 @@ while (($#)); do
     shift
 done
 
-project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)"
+script_path="${BASH_SOURCE[0]:-}"
+project_dir=""
+if [[ -n "${script_path}" ]]; then
+    project_dir="$(cd -- "$(dirname -- "${script_path}")" 2>/dev/null && pwd || true)"
+fi
 
 download_latest() {
     if ! command -v curl >/dev/null 2>&1; then
@@ -83,7 +87,18 @@ binary_tmp="$(mktemp)"
 trap 'rm -f -- "${binary_tmp}"' EXIT
 binary_url="${GH_AI_CREDIT_PULSE_BINARY_URL:-https://github.com/${repo}/releases/download/latest/${asset_name}}"
 printf 'Downloading Rust/Iced dashboard…\n'
-curl -fsSL "${binary_url}" -o "${binary_tmp}"
+if ! curl -fsSL "${binary_url}" -o "${binary_tmp}"; then
+    if command -v cargo >/dev/null 2>&1; then
+        printf 'No prebuilt release found; building it locally with Cargo…\n'
+        cargo build --release --manifest-path "${project_dir}/Cargo.toml"
+        install -m 0755 -- "${project_dir}/target/release/gh-ai-credit-pulse" "${binary_tmp}"
+    else
+        printf '%s\n' \
+            'No prebuilt release is available yet and Cargo is not installed.' \
+            'Please retry shortly after the GitHub build has completed.' >&2
+        exit 1
+    fi
+fi
 chmod 0755 "${binary_tmp}"
 
 if [[ -e "${target_dir}" ]]; then
