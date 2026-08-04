@@ -286,10 +286,12 @@ class CreditIndicator extends PanelMenu.Button {
         const metrics = payload.metrics || {};
         const parsedUsed = Number(current.credits_used);
         const used = Number.isFinite(parsedUsed) ? parsedUsed : null;
+        const parsedRate = Number(metrics.rate_per_hour);
+        const rate = Number.isFinite(parsedRate) ? parsedRate : null;
 
-        // Keep the idle footprint intentionally tiny; richer metrics belong
-        // exclusively to the hover popup and full dashboard.
-        this._panelLabel.text = this._money(used);
+        this._panelLabel.text = rate === null
+            ? this._money(used)
+            : `${this._money(used)} · ${this._money(rate)}/h`;
         this._used.text = this._money(used);
         this._usedDetail.text = `${this._number(used)} AIC`;
         this._today.text = this._money(metrics.delta_today, true);
