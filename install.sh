@@ -6,7 +6,6 @@ set -euo pipefail
 readonly repo="probably-undefined/gh-ai-credit-pulse"
 readonly uuid="gh-ai-credit-pulse@probably-undefined"
 readonly bundle_name="gh-ai-credit-pulse-linux-x86_64.tar.gz"
-readonly release_base="https://github.com/${repo}/releases/latest/download"
 
 data_home="${XDG_DATA_HOME:-${HOME}/.local/share}"
 target_dir="${data_home}/gh-ai-credit-pulse"
@@ -59,13 +58,23 @@ download_verified_bundle() {
         exit 1
     fi
 
+    # Resolve the moving `latest` pointer exactly once. Downloading the bundle
+    # and checksum through separate `latest` redirects can otherwise mix two
+    # releases briefly while GitHub/CDN caches converge.
+    release_tag="$(gh api "repos/${repo}/releases/latest" --jq '.tag_name')"
+    if [[ ! "${release_tag}" =~ ^build-[0-9a-f]{12}$ ]]; then
+        printf 'GitHub returned an unexpected release tag: %s\n' "${release_tag}" >&2
+        exit 1
+    fi
+    release_base="https://github.com/${repo}/releases/download/${release_tag}"
+
     download_dir="$(mktemp -d)"
     archive="${download_dir}/${bundle_name}"
     checksum="${archive}.sha256"
     cleanup() { rm -rf -- "${download_dir}"; }
     trap cleanup EXIT
 
-    printf 'Downloading verified release from %s…\n' "${repo}"
+    printf 'Downloading verified release %s from %s…\n' "${release_tag}" "${repo}"
     curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
         "${release_base}/${bundle_name}" -o "${archive}"
     curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
