@@ -58,10 +58,22 @@ jobs:
 
       - name: Upload generated dependency lock
         if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: generated-cargo-lock
           path: Cargo.lock
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Format Rust sources
+        run: cargo fmt --all
+
+      - name: Upload formatted Rust sources
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: formatted-rust-sources
+          path: src
           if-no-files-found: error
           retention-days: 1
 
@@ -99,7 +111,7 @@ jobs:
           github.ref == 'refs/heads/main' &&
           github.repository == 'probably-undefined/gh-ai-credit-pulse'
         id: upload
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: release-bundle
           path: release/*
@@ -121,13 +133,13 @@ jobs:
     steps:
       # This privileged job never checks out or executes repository code.
       - name: Download verified workflow artifact
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
         with:
           name: release-bundle
           path: release
 
       - name: Attest release provenance
-        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
         with:
           subject-path: release/gh-ai-credit-pulse-linux-x86_64-*.tar.gz
 
