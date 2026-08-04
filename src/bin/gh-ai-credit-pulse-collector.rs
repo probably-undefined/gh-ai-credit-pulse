@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
 use gh_ai_credit_pulse::collector::{
-    Collector, DashboardData, DEFAULT_RETENTION_DAYS, Window, default_db_path,
+    Collector, DEFAULT_RETENTION_DAYS, DashboardData, Window, default_db_path,
 };
 use serde_json::json;
 use std::fs::File;
@@ -48,7 +48,10 @@ fn main() -> ExitCode {
         Ok(code) => ExitCode::from(code),
         Err(error) => {
             let payload = json!({"status": "error", "fresh": false, "error": error.to_string()});
-            println!("{}", serde_json::to_string(&payload).expect("error payload is serializable"));
+            println!(
+                "{}",
+                serde_json::to_string(&payload).expect("error payload is serializable")
+            );
             ExitCode::FAILURE
         }
     }
