@@ -3,7 +3,6 @@ use super::{Error, Result};
 use chrono::{DateTime, NaiveDate, Utc};
 use serde_json::Value;
 use std::env;
-use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
