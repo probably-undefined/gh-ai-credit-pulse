@@ -126,27 +126,93 @@ jobs:
           gh attestation verify release/gh-ai-credit-pulse-linux-x86_64-*.tar.gz \
             --repo "$GITHUB_REPOSITORY" \
             --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/build.yml" \
+            --source-digest "$GITHUB_SHA" \
             --source-ref "refs/heads/main" \
             --deny-self-hosted-runners
 
-      - name: Publish immutable pre-release with changelog
+      - name: Publish rolling attested release with changelog
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           short_sha="${GITHUB_SHA:0:12}"
-          tag="build-${short_sha}"
+          tag="latest"
           asset="gh-ai-credit-pulse-linux-x86_64-${short_sha}.tar.gz"
 
           test -f "release/${asset}"
           test -f "release/${asset}.sha256"
 
-          # The tag, filenames, checksum, and attestation all bind the release
-          # to one immutable commit. GitHub-generated notes provide the changelog.
-          gh release create "$tag" \
-            "release/${asset}" "release/${asset}.sha256" \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
-            --title "gh-ai-credit-pulse pre-release (${short_sha})" \
-            --notes "Automated, provenance-attested build from the canonical main branch." \
-            --generate-notes \
-            --prerelease
+          notes='Automated, provenance-attested build from the canonical main branch.'
+          previous_sha="$(
+            gh api "repos/${GITHUB_REPOSITORY}/commits/${tag}" --jq '.sha' 2>/dev/null || true
+          )"
+          if [[ "$previous_sha" =~ ^[0-9a-f]{40}$ && "$previous_sha" != "$GITHUB_SHA" ]]; then
+            notes="$(
+              gh api --method POST \
+                "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+                -f tag_name="build-${short_sha}" \
+                -f target_commitish="$GITHUB_SHA" \
+                -f previous_tag_name="$tag" \
+                --jq '.body'
+            )"
+          fi
+
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # Upload first. Until the tag moves, installers continue selecting
+            # the old SHA-named asset. After the ref update they select the new one.
+            gh release upload "$tag" \
+              "release/${asset}" "release/${asset}.sha256" \
+              --repo "$GITHUB_REPOSITORY" --clobber
+            gh api --method PATCH \
+              "repos/${GITHUB_REPOSITORY}/git/refs/tags/${tag}" \
+              -f sha="$GITHUB_SHA" -F force=true >/dev/null
+            release_id="$(
+              gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${tag}" --jq '.id'
+            )"
+            gh api --method PATCH \
+              "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
+              -f name="gh-ai-credit-pulse (${short_sha})" \
+              -f body="$notes" \
+              -f target_commitish="$GITHUB_SHA" \
+              -F draft=false -F prerelease=true >/dev/null
+          else
+            if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" \
+                 >/dev/null 2>&1; then
+              gh api --method PATCH \
+                "repos/${GITHUB_REPOSITORY}/git/refs/tags/${tag}" \
+                -f sha="$GITHUB_SHA" -F force=true >/dev/null
+            fi
+            gh release create "$tag" \
+              "release/${asset}" "release/${asset}.sha256" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "gh-ai-credit-pulse (${short_sha})" \
+              --notes "$notes" \
+              --prerelease
+          fi
+
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" \
+            --json assets --jq '.assets[].name' |
+          while IFS= read -r old_asset; do
+            case "$old_asset" in
+              "$asset"|"${asset}.sha256") ;;
+              *) gh release delete-asset "$tag" "$old_asset" \
+                   --repo "$GITHUB_REPOSITORY" --yes ;;
+            esac
+          done
+
+          # The rolling release supersedes the old per-build releases. The
+          # SHA-named asset and provenance source digest retain commit identity.
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 \
+            --json tagName --jq '.[] | select(.tagName | startswith("build-")) | .tagName' |
+          while IFS= read -r old_tag; do
+            gh release delete "$old_tag" --repo "$GITHUB_REPOSITORY" \
+              --cleanup-tag --yes
+          done
+
+          gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/git/matching-refs/tags/build-" \
+            --jq '.[].ref' |
+          while IFS= read -r old_ref; do
+            gh api --method DELETE \
+              "repos/${GITHUB_REPOSITORY}/git/refs/${old_ref#refs/}"
+          done

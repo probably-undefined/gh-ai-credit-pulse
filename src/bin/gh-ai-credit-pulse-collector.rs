@@ -29,6 +29,9 @@ enum Command {
         timeout: f64,
         #[arg(long, default_value_t = DEFAULT_RETENTION_DAYS)]
         retention_days: u32,
+        /// Bypass the freshness window while still respecting the cross-process lease.
+        #[arg(long)]
+        force: bool,
     },
     /// Print dashboard JSON without fetching.
     Dashboard {
@@ -58,30 +61,36 @@ fn main() -> ExitCode {
 }
 
 fn run(cli: Cli) -> Result<u8, Box<dyn std::error::Error>> {
-    let collector = Collector::open(cli.db.unwrap_or_else(default_db_path))?;
+    let database = cli.db.unwrap_or_else(default_db_path);
     match cli.command {
         Command::Sample {
             window,
             timeout,
             retention_days,
+            force,
         } => {
+            let collector = Collector::open(&database)?;
             if !timeout.is_finite() || timeout <= 0.0 {
                 return Err("--timeout must be a positive number".into());
             }
-            let dashboard = collector.sample(
-                Window::from_str(&window)?,
-                Duration::from_secs_f64(timeout),
-                retention_days,
-            )?;
+            let window = Window::from_str(&window)?;
+            let timeout = Duration::from_secs_f64(timeout);
+            let dashboard = if force {
+                collector.sample_force(window, timeout, retention_days)?
+            } else {
+                collector.sample(window, timeout, retention_days)?
+            };
             let code = if dashboard.error.is_some() { 2 } else { 0 };
             emit(&dashboard)?;
             Ok(code)
         }
         Command::Dashboard { window } => {
+            let collector = Collector::open(&database)?;
             emit(&collector.dashboard(Window::from_str(&window)?)?)?;
             Ok(0)
         }
         Command::Export { output } => {
+            let collector = Collector::open(&database)?;
             if output.as_os_str() == "-" {
                 collector.export(io::stdout().lock())?;
             } else {

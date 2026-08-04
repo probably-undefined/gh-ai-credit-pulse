@@ -3,6 +3,6 @@
   "name": "Copilot Usage",
   "description": "Shows GitHub Copilot credit cost and rate in the GNOME top bar.",
   "shell-version": ["42"],
-  "version": 3,
+  "version": 4,
   "url": "https://github.com/probably-undefined/gh-ai-credit-pulse"
 }

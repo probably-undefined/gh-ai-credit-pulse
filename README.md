@@ -71,6 +71,11 @@ gh-ai-credit-pulse dashboard --window 7d | jq
 gh-ai-credit-pulse export --output gh-ai-credit-history.csv
 ```
 
+Normal polling is coordinated through SQLite: multiple dashboards and GNOME
+instances share a 25-second freshness window and one expiring fetch lease.
+`sample --force` bypasses the freshness window for an explicit refresh while
+still respecting the cross-process lease.
+
 ## Architecture
 
 - `gh-ai-credit-pulse` is the Iced application.
@@ -89,8 +94,9 @@ cargo test --all-targets
 cargo build --release
 ```
 
-GitHub Actions builds the Linux bundle on every push to `main` and publishes it
-as an immutable pre-release consumed by the installer.
+GitHub Actions builds the Linux bundle on every push to `main` and updates one
+rolling `latest` pre-release consumed by the installer. Its asset name contains
+the source commit, while the attestation binds the complete source digest.
 
 ## Supply-chain security
 
@@ -99,14 +105,15 @@ as an immutable pre-release consumed by the installer.
 - Pull requests and forks receive only `contents: read`; they cannot publish.
 - The privileged publish job runs only for this canonical repository's `main`
   branch and never checks out or executes repository code.
-- Releases reuse a single rolling `latest` tag instead of accumulating a tag
-  for every build.
+- Releases reuse a single rolling `latest` tag; the workflow removes superseded
+  `build-*` releases and tags.
 - Release assets include the source commit in their names. The installer
-  resolves both unique asset URLs in one API response, preventing mixed files
-  during CDN cache propagation.
+  matches that commit against the rolling tag before downloading either asset,
+  preventing mixed files during CDN cache propagation.
 - The complete bundle is SHA-256 checked and carries GitHub/Sigstore build
   provenance. The installer verifies the exact signer workflow, canonical
-  `main` ref, and GitHub-hosted runner policy before extracting anything.
+  `main` ref, full source commit digest, and GitHub-hosted runner policy before
+  extracting anything.
 - Archive paths and entry types are validated before extraction.
 
 A fork can build its own copy, but it cannot produce an attestation whose

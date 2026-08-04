@@ -6,6 +6,7 @@ set -euo pipefail
 readonly repo="probably-undefined/gh-ai-credit-pulse"
 readonly uuid="gh-ai-credit-pulse@probably-undefined"
 readonly bundle_pattern='^gh-ai-credit-pulse-linux-x86_64-([0-9a-f]{12})\.tar\.gz$'
+readonly release_tag="latest"
 
 data_home="${XDG_DATA_HOME:-${HOME}/.local/share}"
 target_dir="${data_home}/gh-ai-credit-pulse"
@@ -53,22 +54,21 @@ download_verified_bundle() {
     for command_name in gh grep sha256sum tar; do
         require_command "${command_name}"
     done
-    if ! gh attestation --help >/dev/null 2>&1; then
+    if ! gh attestation verify --help 2>/dev/null | grep -q -- '--source-digest'; then
         printf '%s\n' \
             'Your GitHub CLI is too old to verify release provenance.' \
             'Update gh, then run this installer again. Installation stopped safely.' >&2
         exit 1
     fi
 
-    # GitHub's /releases/latest endpoint intentionally excludes pre-releases.
-    # Let gh perform the JSON parsing, then validate the tag and exact asset pair
-    # in Bash. This keeps the bootstrap path independent of Python.
-    release_tags=""
-    if ! release_tags="$(
-        gh release list --repo "${repo}" --limit 30 \
-            --json tagName,isDraft,publishedAt \
-            --jq 'sort_by(.publishedAt) | reverse | .[] | select(.isDraft == false) | .tagName' \
-            2>/dev/null
+    # Resolve the rolling release once, then bind its SHA-named asset to the
+    # commit currently referenced by the tag. Provenance verification below
+    # independently enforces the same full source digest.
+    release_info=""
+    if ! release_info="$(
+        gh release view "${release_tag}" --repo "${repo}" \
+            --json tagName,isDraft,assets \
+            --jq '.tagName, (.isDraft | tostring), (.assets[].name)' 2>/dev/null
     )"; then
         printf '%s\n' \
             'No published gh-ai-credit-pulse release is currently available.' \
@@ -76,44 +76,33 @@ download_verified_bundle() {
         exit 1
     fi
 
-    release_tag=""
-    bundle_name=""
-    while IFS= read -r candidate_tag; do
-        [[ "${candidate_tag}" =~ ^build-([0-9a-f]{12})$ ]] || continue
-        candidate_sha="${BASH_REMATCH[1]}"
-        candidate_bundle="gh-ai-credit-pulse-linux-x86_64-${candidate_sha}.tar.gz"
-        assets="$(
-            gh release view "${candidate_tag}" --repo "${repo}" \
-                --json assets --jq '.assets[].name' 2>/dev/null || true
-        )"
-        [[ "$(grep -Fxc -- "${candidate_bundle}" <<<"${assets}" || true)" == 1 ]] || continue
-        [[ "$(grep -Fxc -- "${candidate_bundle}.sha256" <<<"${assets}" || true)" == 1 ]] || continue
-        release_tag="${candidate_tag}"
-        bundle_name="${candidate_bundle}"
-        break
-    done <<<"${release_tags}"
-
-    if [[ -z "${release_tag}" || -z "${bundle_name}" ]]; then
-        printf '%s\n' \
-            'GitHub returned no valid published build release.' \
-            'Installation stopped safely; no files were changed.' >&2
+    mapfile -t release_fields <<<"${release_info}"
+    if [[ "${release_fields[0]:-}" != "${release_tag}" ||
+          "${release_fields[1]:-}" != 'false' ]]; then
+        printf 'GitHub returned an invalid rolling release.\n' >&2
         exit 1
     fi
 
-    if [[ ! "${release_tag}" =~ ^build-([0-9a-f]{12})$ ]]; then
-        printf 'GitHub returned an unexpected release tag: %s\n' "${release_tag}" >&2
+    source_sha="$(
+        gh api "repos/${repo}/commits/${release_tag}" --jq '.sha' 2>/dev/null || true
+    )"
+    if [[ ! "${source_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+        printf 'GitHub returned an invalid release commit.\n' >&2
         exit 1
     fi
-    tag_sha="${BASH_REMATCH[1]}"
+    source_short_sha="${source_sha:0:12}"
+    bundle_name="gh-ai-credit-pulse-linux-x86_64-${source_short_sha}.tar.gz"
+    assets="$(printf '%s\n' "${release_fields[@]:2}")"
 
-    if [[ ! "${bundle_name}" =~ ${bundle_pattern} ]]; then
-        printf 'GitHub returned an unexpected release asset: %s\n' "${bundle_name}" >&2
+    if [[ "$(grep -Fxc -- "${bundle_name}" <<<"${assets}" || true)" != 1 ||
+          "$(grep -Fxc -- "${bundle_name}.sha256" <<<"${assets}" || true)" != 1 ]]; then
+        printf 'GitHub returned an unexpected release asset set.\n' >&2
         exit 1
     fi
-    asset_sha="${BASH_REMATCH[1]}"
 
-    if [[ "${tag_sha}" != "${asset_sha}" ]]; then
-        printf 'Release tag and asset commit do not match.\n' >&2
+    if [[ ! "${bundle_name}" =~ ${bundle_pattern} ||
+          "${BASH_REMATCH[1]}" != "${source_short_sha}" ]]; then
+        printf 'Release commit and asset name do not match.\n' >&2
         exit 1
     fi
 
@@ -131,6 +120,7 @@ download_verified_bundle() {
     gh attestation verify "${archive}" \
         --repo "${repo}" \
         --signer-workflow "${repo}/.github/workflows/build.yml" \
+        --source-digest "${source_sha}" \
         --source-ref "refs/heads/main" \
         --deny-self-hosted-runners >/dev/null
     printf 'Checksum and GitHub build provenance verified.\n'

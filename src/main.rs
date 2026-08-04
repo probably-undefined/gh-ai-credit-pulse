@@ -71,15 +71,19 @@ impl Dashboard {
                 refreshing: true,
                 ..Self::default()
             },
-            load_dashboard(),
+            load_dashboard(false),
         )
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::Refresh | Message::Tick if !self.refreshing => {
+            Message::Refresh if !self.refreshing => {
                 self.refreshing = true;
-                load_dashboard()
+                load_dashboard(true)
+            }
+            Message::Tick if !self.refreshing => {
+                self.refreshing = true;
+                load_dashboard(false)
             }
             Message::Loaded(Ok(data)) => {
                 self.refreshing = false;
@@ -479,13 +483,19 @@ fn allowance_panel<'a>(
     .into()
 }
 
-fn load_dashboard() -> Task<Message> {
-    Task::perform(async { run_collector() }, Message::Loaded)
+fn load_dashboard(force: bool) -> Task<Message> {
+    Task::perform(async move { run_collector(force) }, Message::Loaded)
 }
 
-fn run_collector() -> Result<DashboardData, String> {
+fn run_collector(force: bool) -> Result<DashboardData, String> {
     Collector::open(default_db_path())
-        .and_then(|collector| collector.sample(Window::OneDay, Duration::from_secs(20), 180))
+        .and_then(|collector| {
+            if force {
+                collector.sample_force(Window::OneDay, Duration::from_secs(20), 180)
+            } else {
+                collector.sample(Window::OneDay, Duration::from_secs(20), 180)
+            }
+        })
         .map_err(|error| error.to_string())
 }
 
