@@ -81,7 +81,7 @@ import sys
 
 releases = json.load(sys.stdin)
 tag_pattern = re.compile(r"^build-([0-9a-f]{12})$")
-asset_pattern = re.compile(r"^gh-ai-credit-pulse-linux-x86_64-([0-9a-f]{12})\\.tar\\.gz$")
+asset_pattern = re.compile(r"^gh-ai-credit-pulse-linux-x86_64-([0-9a-f]{12})\.tar\.gz$")
 
 for release in releases:
     if release.get("draft"):
