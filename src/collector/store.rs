@@ -288,7 +288,10 @@ mod tests {
             .expect("system time is after the Unix epoch")
             .as_nanos();
         std::env::temp_dir()
-            .join(format!("gh-ai-credit-pulse-{}-{unique}", std::process::id()))
+            .join(format!(
+                "gh-ai-credit-pulse-{}-{unique}",
+                std::process::id()
+            ))
             .join("history.sqlite3")
     }
 
