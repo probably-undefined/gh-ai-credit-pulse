@@ -19,7 +19,6 @@ const MUTED: Color = Color::from_rgb(0.620, 0.663, 0.753);
 const VIOLET: Color = Color::from_rgb(0.545, 0.361, 0.965);
 const CYAN: Color = Color::from_rgb(0.133, 0.827, 0.933);
 const MINT: Color = Color::from_rgb(0.204, 0.827, 0.600);
-const PINK: Color = Color::from_rgb(0.957, 0.447, 0.714);
 const AMBER: Color = Color::from_rgb(0.984, 0.749, 0.141);
 const ERROR: Color = Color::from_rgb(0.984, 0.443, 0.522);
 const APPLICATION_ID: &str = "io.github.probably_undefined.GhAiCreditPulse";
@@ -161,65 +160,63 @@ impl Dashboard {
         .spacing(7)
         .width(Length::FillPortion(3));
 
-        let cycle_snapshot = container(
-            column![
-                kicker("ESTIMATED TOTAL", CYAN),
-                text(money(metrics.projected_at_reset, false))
-                    .size(24)
-                    .color(TEXT),
-                text("Based on the cycle average").size(11).color(MUTED),
-                text(pace_label).size(11).color(pace_color),
-                text(format!(
-                    "{}  ·  {} local samples",
-                    reset_text(current.reset_at),
-                    self.data.sample_count.unwrap_or(0)
-                ))
-                .size(11)
-                .color(MUTED),
-            ]
-            .spacing(7),
-        )
-        .width(Length::FillPortion(2))
-        .padding(16)
-        .style(|_| glass_style());
+        let allowance_note = if entitlement.is_some() {
+            text(pace_label).size(11).color(pace_color)
+        } else {
+            text("Allowance not reported by GitHub").size(11).color(MUTED)
+        };
+        let cycle_summary = column![
+            kicker("ESTIMATED TOTAL", MUTED),
+            text(money(metrics.projected_at_reset, false))
+                .size(30)
+                .color(TEXT),
+            text(format!(
+                "{}/day cycle average",
+                money(metrics.average_per_day, false)
+            ))
+            .size(11)
+            .color(MUTED),
+            text(format!(
+                "{}  ·  {} samples",
+                reset_text(current.reset_at),
+                self.data.sample_count.unwrap_or(0)
+            ))
+            .size(11)
+            .color(MUTED),
+            allowance_note,
+        ]
+        .spacing(7)
+        .width(Length::FillPortion(2));
 
-        let hero = container(row![hero_copy, cycle_snapshot].spacing(28).align_y(Alignment::Center))
-            .width(Length::Fill)
-            .padding([22, 26])
-            .style(|_| hero_style());
+        let hero = container(
+            row![hero_copy, vertical_divider(), cycle_summary]
+                .spacing(28)
+                .align_y(Alignment::Center),
+        )
+        .width(Length::Fill)
+        .padding([22, 26])
+        .style(|_| hero_style());
 
         let metrics_row = row![
             metric_card(
                 "TODAY",
                 money(metrics.delta_today, true),
-                format!(
-                    "Since midnight  ·  {} last hour",
-                    money(metrics.delta_1h, false)
-                ),
-                CYAN,
+                "Since local midnight".to_owned(),
             ),
             metric_card(
-                "6-HOUR RATE",
+                "LAST HOUR",
+                money(metrics.delta_1h, true),
+                "Recorded usage".to_owned(),
+            ),
+            metric_card(
+                "CURRENT RATE",
                 format!("{}/h", money(metrics.rate_per_hour, false)),
-                format!(
-                    "Observed rate  ·  {}/day cycle avg",
-                    money(metrics.average_per_day, false)
-                ),
-                PINK,
-            ),
-            metric_card(
-                "LAST 7 DAYS",
-                money(metrics.delta_7d, true),
-                format!(
-                    "{}/day recorded average",
-                    money(metrics.delta_7d.map(|credits| credits / 7.0), false)
-                ),
-                VIOLET,
+                "Based on the last six hours".to_owned(),
             ),
         ]
         .spacing(14);
 
-        let chart = daily_chart(&self.data.daily);
+        let chart = usage_chart(&self.data.daily, &self.data.series, self.data.sample_count);
         let lower: Element<'_, Message> = if let Some(entitlement) = entitlement {
             let fraction = (used / entitlement).clamp(0.0, 1.0) as f32;
             row![
@@ -230,22 +227,15 @@ impl Dashboard {
             .height(Length::Fill)
             .into()
         } else {
-            column![chart, allowance_unavailable()]
-                .spacing(12)
-                .height(Length::Fill)
-                .into()
+            chart
         };
 
-        let footer = row![
-            text(format!(
-                "{} · local-first history · refreshes every 30 seconds",
-                current.plan.as_deref().unwrap_or("GitHub Copilot")
-            ))
-            .size(10)
-            .color(MUTED),
-            Space::new().width(Length::Fill),
-            text("DATA STORED LOCALLY").size(10).color(MINT),
-        ];
+        let footer = text(format!(
+            "{} · history stored locally · updates every 30 seconds",
+            current.plan.as_deref().unwrap_or("GitHub Copilot")
+        ))
+        .size(10)
+        .color(MUTED);
 
         let mut content = column![header, hero, metrics_row, lower, footer].spacing(16);
         if let Some(error) = &self.error {
@@ -265,39 +255,26 @@ impl Dashboard {
     }
 }
 
-fn daily_chart<'a>(days: &[DailyUsage]) -> Element<'a, Message> {
+fn usage_chart<'a>(
+    days: &[DailyUsage],
+    series: &[UsageSample],
+    sample_count: Option<u64>,
+) -> Element<'a, Message> {
     let start = days.len().saturating_sub(14);
     let visible = &days[start..];
-    let max_credits = visible
-        .iter()
-        .map(|day| day.credits)
-        .fold(0.0_f64, f64::max)
-        .max(1.0);
-
     let active_days = visible.iter().filter(|day| day.credits > 0.0).count();
+    let daily_ready = active_days >= 2;
     let mut bars: Row<'a, Message> = Row::new()
         .spacing(7)
         .height(Length::Fill)
         .align_y(Alignment::End);
 
-    if active_days < 2 {
-        bars = bars.push(
-            container(
-                column![
-                    text("Not enough history yet").size(17).color(TEXT),
-                    text("The trend appears after usage is recorded on two different days.")
-                        .size(11)
-                        .color(MUTED),
-                ]
-                .spacing(7)
-                .align_x(Alignment::Center),
-            )
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .align_x(Alignment::Center)
-            .align_y(Alignment::Center),
-        );
-    } else {
+    let (title, subtitle, summary) = if daily_ready {
+        let max_credits = visible
+            .iter()
+            .map(|day| day.credits)
+            .fold(0.0_f64, f64::max)
+            .max(1.0);
         for (index, day) in visible.iter().enumerate() {
             let intensity = (day.credits / max_credits).clamp(0.0, 1.0) as f32;
             let height = if day.credits > 0.0 {
@@ -313,45 +290,82 @@ fn daily_chart<'a>(days: &[DailyUsage]) -> Element<'a, Message> {
             } else {
                 " ".to_owned()
             };
-            let bar = container(Space::new().width(Length::Fill).height(Length::Fill))
-                .width(Length::Fill)
-                .height(Length::Fixed(height))
-                .style(move |_| bar_style(color, 0.42 + intensity * 0.58));
-            bars = bars.push(
-                column![
-                    Space::new().height(Length::Fill),
-                    bar,
-                    text(label).size(9).color(if index + 1 == visible.len() {
-                        CYAN
-                    } else {
-                        MUTED
-                    }),
-                ]
-                .width(Length::FillPortion(1))
-                .height(Length::Fill)
-                .spacing(6)
-                .align_x(Alignment::Center),
-            );
+            bars = bars.push(chart_bar(
+                height,
+                intensity,
+                color,
+                label,
+                index + 1 == visible.len(),
+            ));
         }
-    }
+        (
+            "USAGE HISTORY".to_owned(),
+            "Last 14 days".to_owned(),
+            money(Some(visible.iter().map(|day| day.credits).sum()), false),
+        )
+    } else if series.len() >= 2 {
+        let buckets = recent_buckets(series, 24);
+        let maximum = buckets.iter().copied().fold(0.0_f64, f64::max).max(1.0);
+        for (index, credits) in buckets.iter().enumerate() {
+            let intensity = (*credits / maximum).clamp(0.0, 1.0) as f32;
+            let height = if *credits > 0.0 {
+                8.0 + intensity * 144.0
+            } else {
+                3.0
+            };
+            let last = index + 1 == buckets.len();
+            let label = if index == 0 {
+                "Earlier".to_owned()
+            } else if last {
+                "Now".to_owned()
+            } else {
+                " ".to_owned()
+            };
+            bars = bars.push(chart_bar(
+                height,
+                intensity,
+                if last { CYAN } else { VIOLET },
+                label,
+                last,
+            ));
+        }
+        (
+            "RECENT ACTIVITY".to_owned(),
+            "Recorded samples; the daily view starts after a second day".to_owned(),
+            format!("{} samples", sample_count.unwrap_or(series.len() as u64)),
+        )
+    } else {
+        bars = bars.push(
+            container(
+                column![
+                    text("Waiting for usage samples").size(17).color(TEXT),
+                    text("The chart appears after the next refresh.").size(11).color(MUTED),
+                ]
+                .spacing(7)
+                .align_x(Alignment::Center),
+            )
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .align_x(Alignment::Center)
+            .align_y(Alignment::Center),
+        );
+        (
+            "USAGE HISTORY".to_owned(),
+            "No recorded changes yet".to_owned(),
+            "—".to_owned(),
+        )
+    };
 
     container(
         column![
             row![
                 column![
-                    kicker("RECORDED USAGE", VIOLET),
-                    text("Last 14 days")
-                        .size(11)
-                        .color(MUTED),
+                    text(title).size(10).color(MUTED),
+                    text(subtitle).size(11).color(MUTED),
                 ]
                 .spacing(3),
                 Space::new().width(Length::Fill),
-                text(money(
-                    Some(visible.iter().map(|day| day.credits).sum()),
-                    false
-                ))
-                .size(21)
-                .color(TEXT),
+                text(summary).size(16).color(MUTED),
             ]
             .align_y(Alignment::Center),
             bars,
@@ -363,6 +377,37 @@ fn daily_chart<'a>(days: &[DailyUsage]) -> Element<'a, Message> {
     .height(Length::Fill)
     .padding(18)
     .style(|_| elevated_style())
+    .into()
+}
+
+fn recent_buckets(series: &[UsageSample], maximum: usize) -> Vec<f64> {
+    let chunk_size = (series.len() + maximum - 1) / maximum;
+    series
+        .chunks(chunk_size.max(1))
+        .map(|chunk| chunk.iter().map(|sample| sample.delta).sum())
+        .collect()
+}
+
+fn chart_bar<'a>(
+    height: f32,
+    intensity: f32,
+    color: Color,
+    label: String,
+    current: bool,
+) -> Element<'a, Message> {
+    let bar = container(Space::new().width(Length::Fill).height(Length::Fill))
+        .width(Length::Fill)
+        .height(Length::Fixed(height))
+        .style(move |_| bar_style(color, 0.38 + intensity * 0.62));
+    column![
+        Space::new().height(Length::Fill),
+        bar,
+        text(label).size(9).color(if current { CYAN } else { MUTED }),
+    ]
+    .width(Length::FillPortion(1))
+    .height(Length::Fill)
+    .spacing(6)
+    .align_x(Alignment::Center)
     .into()
 }
 
@@ -426,27 +471,6 @@ fn allowance_panel<'a>(
     .width(Length::FillPortion(2))
     .height(Length::Fill)
     .padding(18)
-    .style(|_| elevated_style())
-    .into()
-}
-
-fn allowance_unavailable<'a>() -> Element<'a, Message> {
-    container(
-        row![
-            column![
-                kicker("ALLOWANCE", MUTED),
-                text("Monthly cap unavailable").size(15).color(TEXT),
-            ]
-            .spacing(4),
-            Space::new().width(Length::Fill),
-            text("GitHub did not report an allowance for this plan.")
-                .size(11)
-                .color(MUTED),
-        ]
-        .align_y(Alignment::Center),
-    )
-    .width(Length::Fill)
-    .padding([13, 17])
     .style(|_| elevated_style())
     .into()
 }
@@ -543,11 +567,10 @@ fn metric_card<'a>(
     title: &'static str,
     value: String,
     detail: String,
-    accent: Color,
 ) -> Element<'a, Message> {
     container(
         column![
-            kicker(title, accent),
+            kicker(title, MUTED),
             text(value).size(29).color(TEXT),
             text(detail).size(11).color(MUTED),
         ]
@@ -557,6 +580,17 @@ fn metric_card<'a>(
     .padding([15, 17])
     .style(|_| elevated_style())
     .into()
+}
+
+fn vertical_divider<'a>() -> Element<'a, Message> {
+    container(Space::new())
+        .width(Length::Fixed(1.0))
+        .height(Length::Fixed(104.0))
+        .style(|_| container::Style {
+            background: Some(Background::Color(Color { a: 0.70, ..BORDER })),
+            ..container::Style::default()
+        })
+        .into()
 }
 
 fn kicker<'a>(value: &'static str, color: Color) -> iced::widget::Text<'a> {
@@ -690,6 +724,7 @@ struct DashboardData {
     current: Current,
     metrics: Metrics,
     daily: Vec<DailyUsage>,
+    series: Vec<UsageSample>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -707,7 +742,6 @@ struct Current {
 struct Metrics {
     delta_1h: Option<f64>,
     delta_today: Option<f64>,
-    delta_7d: Option<f64>,
     rate_per_hour: Option<f64>,
     average_per_day: Option<f64>,
     projected_at_reset: Option<f64>,
@@ -719,4 +753,10 @@ struct Metrics {
 struct DailyUsage {
     date: String,
     credits: f64,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+struct UsageSample {
+    delta: f64,
 }
