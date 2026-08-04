@@ -95,8 +95,7 @@ pub fn default_db_path() -> PathBuf {
             .join("history.sqlite3");
     }
     if let Some(home) = env::var_os("HOME") {
-        return PathBuf::from(home)
-            .join(".local/state/gh-ai-credits/history.sqlite3");
+        return PathBuf::from(home).join(".local/state/gh-ai-credits/history.sqlite3");
     }
     PathBuf::from(".local/state/gh-ai-credits/history.sqlite3")
 }
