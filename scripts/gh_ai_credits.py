@@ -12,6 +12,7 @@ import csv
 import hashlib
 import json
 import os
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -57,6 +58,36 @@ def default_db_path() -> Path:
         return Path(override).expanduser()
     state_home = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state"))
     return state_home / "gh-ai-credits" / "history.sqlite3"
+
+
+def resolve_gh_executable() -> str:
+    override = os.environ.get("GH_AI_CREDITS_GH")
+    if override:
+        candidate = Path(override).expanduser()
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+        raise UsageError(f"GH_AI_CREDITS_GH is not executable: {candidate}")
+
+    discovered = shutil.which("gh")
+    if discovered:
+        return discovered
+
+    home = Path.home()
+    candidates = (
+        home / ".local/bin/gh",
+        home / ".linuxbrew/bin/gh",
+        home / ".local/share/gh/bin/gh",
+        Path("/home/linuxbrew/.linuxbrew/bin/gh"),
+        Path("/usr/local/bin/gh"),
+        Path("/usr/bin/gh"),
+        Path("/snap/bin/gh"),
+    )
+    for candidate in candidates:
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+
+    searched = ", ".join(str(path.parent) for path in candidates)
+    raise UsageError(f"GitHub CLI not found in PATH or common install locations ({searched})")
 
 
 def iso_to_epoch(value: str | None) -> int | None:
@@ -127,16 +158,17 @@ def fetch_payload(timeout: float = 20.0) -> dict[str, Any]:
         except (OSError, json.JSONDecodeError) as exc:
             raise UsageError(f"cannot read fixture: {exc}") from exc
 
+    gh = resolve_gh_executable()
     try:
         completed = subprocess.run(
-            ["gh", "api", "/copilot_internal/user"],
+            [gh, "api", "/copilot_internal/user"],
             check=False,
             capture_output=True,
             text=True,
             timeout=timeout,
         )
     except FileNotFoundError as exc:
-        raise UsageError("GitHub CLI not found; install `gh` and run `gh auth login`") from exc
+        raise UsageError(f"GitHub CLI disappeared before it could be started: {gh}") from exc
     except subprocess.TimeoutExpired as exc:
         raise UsageError(f"GitHub API request timed out after {timeout:g}s") from exc
 

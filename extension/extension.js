@@ -19,6 +19,7 @@ class CreditIndicator extends PanelMenu.Button {
         this._refreshing = false;
         this._cancellable = new Gio.Cancellable();
         this._collector = GLib.build_filenamev([Me.path, 'scripts', 'gh_ai_credits.py']);
+        this.menu.box.add_style_class_name('credit-pulse-menu-content');
 
         this._panelLabel = new St.Label({
             text: '$—',
@@ -92,7 +93,7 @@ class CreditIndicator extends PanelMenu.Button {
         titleBox.add_child(this._subtitle);
         header.add_child(titleBox);
         this._status = new St.Label({
-            text: 'Loading',
+            text: '● Loading',
             y_align: Clutter.ActorAlign.CENTER,
             style_class: 'credit-pulse-status',
         });
@@ -102,7 +103,7 @@ class CreditIndicator extends PanelMenu.Button {
         const hero = new St.BoxLayout({vertical: true, style_class: 'credit-pulse-hero'});
         const heroHeader = new St.BoxLayout();
         heroHeader.add_child(new St.Label({
-            text: 'TOTAL COST THIS CYCLE',
+            text: 'CURRENT BILLING CYCLE',
             x_expand: true,
             style_class: 'credit-pulse-kicker credit-pulse-kicker-violet',
         }));
@@ -120,7 +121,7 @@ class CreditIndicator extends PanelMenu.Button {
         const metrics = new St.BoxLayout({style_class: 'credit-pulse-metrics'});
         [
             ['TODAY', '_today', '_todayDetail'],
-            ['CURRENT RATE', '_rate', '_rateDetail'],
+            ['6-HOUR RATE', '_rate', '_rateDetail'],
             ['PROJECTION', '_projection', '_projectionDetail'],
         ].forEach(([title, valueName, detailName]) => {
             const card = new St.BoxLayout({vertical: true, x_expand: true, style_class: 'credit-pulse-card'});
@@ -136,7 +137,7 @@ class CreditIndicator extends PanelMenu.Button {
         const pulse = new St.BoxLayout({vertical: true, style_class: 'credit-pulse-pulse'});
         const pulseHeader = new St.BoxLayout();
         pulseHeader.add_child(new St.Label({
-            text: '7 DAY PULSE',
+            text: 'LAST 7 DAYS',
             x_expand: true,
             style_class: 'credit-pulse-kicker credit-pulse-kicker-cyan',
         }));
@@ -145,6 +146,8 @@ class CreditIndicator extends PanelMenu.Button {
         pulse.add_child(pulseHeader);
         const chart = new St.BoxLayout({style_class: 'credit-pulse-chart'});
         const labels = new St.BoxLayout({style_class: 'credit-pulse-chart-labels'});
+        this._chart = chart;
+        this._chartLabels = labels;
         this._dailyBars = [];
         this._dailyLabels = [];
         for (let index = 0; index < 7; index++) {
@@ -161,6 +164,12 @@ class CreditIndicator extends PanelMenu.Button {
         }
         pulse.add_child(chart);
         pulse.add_child(labels);
+        this._pulseEmpty = new St.Label({
+            text: 'More than one day of history is needed.',
+            visible: false,
+            style_class: 'credit-pulse-empty',
+        });
+        pulse.add_child(this._pulseEmpty);
         dashboard.add_child(pulse);
 
         const allowance = new St.BoxLayout({vertical: true, style_class: 'credit-pulse-allowance'});
@@ -191,11 +200,13 @@ class CreditIndicator extends PanelMenu.Button {
         this.menu.addMenuItem(contentItem);
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
-        const refreshItem = new PopupMenu.PopupMenuItem('Refresh now');
+        const refreshItem = new PopupMenu.PopupMenuItem('↻   Refresh now');
+        refreshItem.add_style_class_name('credit-pulse-action');
         refreshItem.connect('activate', () => this._refresh(true));
         this.menu.addMenuItem(refreshItem);
 
-        const dashboardItem = new PopupMenu.PopupMenuItem('Open full dashboard');
+        const dashboardItem = new PopupMenu.PopupMenuItem('↗   Open full dashboard');
+        dashboardItem.add_style_class_name('credit-pulse-action');
         dashboardItem.connect('activate', () => {
             const launcher = GLib.build_filenamev([GLib.get_home_dir(), '.local', 'bin', 'gh-ai-credit-pulse']);
             try {
@@ -206,7 +217,8 @@ class CreditIndicator extends PanelMenu.Button {
         });
         this.menu.addMenuItem(dashboardItem);
 
-        const updateItem = new PopupMenu.PopupMenuItem('Install latest update');
+        const updateItem = new PopupMenu.PopupMenuItem('↓   Install latest update');
+        updateItem.add_style_class_name('credit-pulse-action');
         updateItem.connect('activate', () => {
             const launcher = GLib.build_filenamev([GLib.get_home_dir(), '.local', 'bin', 'gh-ai-credit-pulse']);
             try {
@@ -239,7 +251,7 @@ class CreditIndicator extends PanelMenu.Button {
         if (this._refreshing)
             return;
         this._refreshing = true;
-        this._status.text = 'Refreshing…';
+        this._status.text = '● Syncing';
 
         let process;
         try {
@@ -274,8 +286,12 @@ class CreditIndicator extends PanelMenu.Button {
         const metrics = payload.metrics || {};
         const parsedUsed = Number(current.credits_used);
         const used = Number.isFinite(parsedUsed) ? parsedUsed : null;
+        const parsedRate = Number(metrics.rate_per_hour);
+        const rate = Number.isFinite(parsedRate) ? parsedRate : null;
 
-        this._panelLabel.text = this._money(used);
+        this._panelLabel.text = rate === null
+            ? this._money(used)
+            : `${this._money(used)} · ${this._money(rate)}/h`;
         this._used.text = this._money(used);
         this._usedDetail.text = `${this._number(used)} AIC`;
         this._today.text = this._money(metrics.delta_today, true);
@@ -289,12 +305,20 @@ class CreditIndicator extends PanelMenu.Button {
         const daily = Array.isArray(payload.daily) ? payload.daily.slice(-7) : [];
         const maximum = Math.max(1, ...daily.map(day => Number(day.credits) || 0));
         const total = daily.reduce((sum, day) => sum + (Number(day.credits) || 0), 0);
+        const hasTrend = daily.filter(day => (Number(day.credits) || 0) > 0).length >= 2;
         this._pulseTotal.text = this._money(total);
+        this._chart.visible = hasTrend;
+        this._chartLabels.visible = hasTrend;
+        this._pulseEmpty.visible = !hasTrend;
         for (let index = 0; index < 7; index++) {
             const day = daily[index] || {};
             const credits = Number(day.credits) || 0;
-            this._dailyBars[index].height = Math.round(6 + (credits / maximum) * 44);
-            this._dailyLabels[index].text = day.label || '·';
+            this._dailyBars[index].height = credits > 0
+                ? Math.round(6 + (credits / maximum) * 44)
+                : 2;
+            this._dailyLabels[index].text = index === daily.length - 1
+                ? 'Today'
+                : this._shortDate(day.date);
             if (index === daily.length - 1)
                 this._dailyBars[index].add_style_class_name('credit-pulse-chart-bar-current');
             else
@@ -306,11 +330,13 @@ class CreditIndicator extends PanelMenu.Button {
         if (entitlement > 0) {
             this._allowanceText.text = `${this._money(used)} / ${this._money(entitlement)}`;
             this._remaining.text = `${this._money(remaining)} remaining`;
+            this._progressTrack.visible = true;
             const fraction = Math.max(0, Math.min(1, used / entitlement));
             this._progress.width = Math.round(350 * fraction);
         } else {
-            this._allowanceText.text = 'Not reported';
-            this._remaining.text = '';
+            this._allowanceText.text = 'Unavailable';
+            this._remaining.text = 'GitHub did not report a monthly cap for this plan.';
+            this._progressTrack.visible = false;
             this._progress.width = 0;
         }
 
@@ -318,13 +344,13 @@ class CreditIndicator extends PanelMenu.Button {
             this._showError(payload.error || 'GitHub API error');
         else {
             this._error.visible = false;
-            this._status.text = 'Live · 30s';
+            this._status.text = '● Live';
             this._status.remove_style_class_name('credit-pulse-status-error');
         }
     }
 
     _showError(message) {
-        this._status.text = 'Cached';
+        this._status.text = '● Cached';
         this._status.add_style_class_name('credit-pulse-status-error');
         this._error.text = String(message);
         this._error.visible = true;
@@ -345,6 +371,13 @@ class CreditIndicator extends PanelMenu.Button {
             return '—';
         const sign = signed && parsed > 0 ? '+' : '';
         return `${sign}$${parsed.toFixed(2)}`;
+    }
+
+    _shortDate(value) {
+        const match = String(value || '').match(/^\d{4}-(\d{2})-(\d{2})$/);
+        if (!match)
+            return '·';
+        return `${Number(match[1])}/${Number(match[2])}`;
     }
 
     _resetText(epoch) {

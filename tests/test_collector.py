@@ -4,6 +4,7 @@ import sqlite3
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -65,6 +66,19 @@ class CollectorTests(unittest.TestCase):
     def test_rejects_missing_premium_quota(self):
         with self.assertRaises(collector.UsageError):
             collector.parse_snapshot({"quota_snapshots": {}})
+
+    def test_resolves_explicit_gh_outside_path(self):
+        executable = Path(self.temp.name) / "custom-gh"
+        executable.write_text("#!/bin/sh\n", encoding="utf-8")
+        executable.chmod(0o755)
+        with mock.patch.dict("os.environ", {"GH_AI_CREDITS_GH": str(executable)}):
+            self.assertEqual(collector.resolve_gh_executable(), str(executable))
+
+    def test_rejects_invalid_explicit_gh(self):
+        missing = Path(self.temp.name) / "missing-gh"
+        with mock.patch.dict("os.environ", {"GH_AI_CREDITS_GH": str(missing)}):
+            with self.assertRaisesRegex(collector.UsageError, "not executable"):
+                collector.resolve_gh_executable()
 
     def test_dashboard_aggregates_usage_and_rate(self):
         now = int(datetime(2026, 8, 4, 12, 0, tzinfo=timezone.utc).timestamp())
