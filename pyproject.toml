@@ -1,8 +1,0 @@
-[project]
-name = "gh-ai-credits"
-version = "1.1.0"
-description = "Collector for the Rust/Iced and GNOME Shell GitHub AI Credit Pulse frontends"
-requires-python = ">=3.10"
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
