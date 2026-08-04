@@ -1,6 +1,6 @@
 [package]
 name = "gh-ai-credit-pulse"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2024"
 license = "MIT"
 description = "Modern GitHub Copilot AI credit dashboard built with Rust and Iced"

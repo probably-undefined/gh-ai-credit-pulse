@@ -12,6 +12,10 @@ cross-platform Iced application.
 
 The conversion is fixed at **100 AIC = $1.00**.
 
+Version 1.1 adds a high-contrast violet/cyan visual system, a cycle hero,
+velocity and projection signals, a 14-day pulse chart, and a redesigned GNOME
+hover dashboard while keeping the idle top-bar footprint to the dollar value.
+
 ## Install
 
 ```bash

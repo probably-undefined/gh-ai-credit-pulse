@@ -75,6 +75,11 @@ class CreditIndicator extends PanelMenu.Button {
         contentItem.add_child(dashboard);
 
         const header = new St.BoxLayout({style_class: 'credit-pulse-header'});
+        header.add_child(new St.Label({
+            text: '✦',
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: 'credit-pulse-brand-mark',
+        }));
         const titleBox = new St.BoxLayout({vertical: true, x_expand: true});
         titleBox.add_child(new St.Label({
             text: 'AI CREDIT PULSE',
@@ -95,10 +100,17 @@ class CreditIndicator extends PanelMenu.Button {
         dashboard.add_child(header);
 
         const hero = new St.BoxLayout({vertical: true, style_class: 'credit-pulse-hero'});
-        hero.add_child(new St.Label({
-            text: 'COST USED',
-            style_class: 'credit-pulse-kicker',
+        const heroHeader = new St.BoxLayout();
+        heroHeader.add_child(new St.Label({
+            text: 'TOTAL COST THIS CYCLE',
+            x_expand: true,
+            style_class: 'credit-pulse-kicker credit-pulse-kicker-violet',
         }));
+        heroHeader.add_child(new St.Label({
+            text: '100 AIC = $1',
+            style_class: 'credit-pulse-conversion',
+        }));
+        hero.add_child(heroHeader);
         this._used = new St.Label({text: '$—', style_class: 'credit-pulse-hero-value'});
         this._usedDetail = new St.Label({text: '— AIC', style_class: 'credit-pulse-detail'});
         hero.add_child(this._used);
@@ -120,6 +132,36 @@ class CreditIndicator extends PanelMenu.Button {
             metrics.add_child(card);
         });
         dashboard.add_child(metrics);
+
+        const pulse = new St.BoxLayout({vertical: true, style_class: 'credit-pulse-pulse'});
+        const pulseHeader = new St.BoxLayout();
+        pulseHeader.add_child(new St.Label({
+            text: '7 DAY PULSE',
+            x_expand: true,
+            style_class: 'credit-pulse-kicker credit-pulse-kicker-cyan',
+        }));
+        this._pulseTotal = new St.Label({text: '$—', style_class: 'credit-pulse-pulse-total'});
+        pulseHeader.add_child(this._pulseTotal);
+        pulse.add_child(pulseHeader);
+        const chart = new St.BoxLayout({style_class: 'credit-pulse-chart'});
+        const labels = new St.BoxLayout({style_class: 'credit-pulse-chart-labels'});
+        this._dailyBars = [];
+        this._dailyLabels = [];
+        for (let index = 0; index < 7; index++) {
+            const slot = new St.Bin({x_expand: true, y_align: Clutter.ActorAlign.END});
+            const bar = new St.Widget({style_class: 'credit-pulse-chart-bar'});
+            bar.set_width(34);
+            bar.set_height(6);
+            slot.set_child(bar);
+            chart.add_child(slot);
+            const label = new St.Label({text: '·', x_expand: true, style_class: 'credit-pulse-chart-label'});
+            labels.add_child(label);
+            this._dailyBars.push(bar);
+            this._dailyLabels.push(label);
+        }
+        pulse.add_child(chart);
+        pulse.add_child(labels);
+        dashboard.add_child(pulse);
 
         const allowance = new St.BoxLayout({vertical: true, style_class: 'credit-pulse-allowance'});
         const allowanceHeader = new St.BoxLayout();
@@ -230,7 +272,8 @@ class CreditIndicator extends PanelMenu.Button {
     _applyPayload(payload) {
         const current = payload.current || {};
         const metrics = payload.metrics || {};
-        const used = Number(current.credits_used || 0);
+        const parsedUsed = Number(current.credits_used);
+        const used = Number.isFinite(parsedUsed) ? parsedUsed : null;
 
         this._panelLabel.text = this._money(used);
         this._used.text = this._money(used);
@@ -243,13 +286,28 @@ class CreditIndicator extends PanelMenu.Button {
         this._projectionDetail.text = 'at next reset';
         this._subtitle.text = `${current.plan || 'Copilot'}  ·  ${this._resetText(current.reset_at)}`;
 
+        const daily = Array.isArray(payload.daily) ? payload.daily.slice(-7) : [];
+        const maximum = Math.max(1, ...daily.map(day => Number(day.credits) || 0));
+        const total = daily.reduce((sum, day) => sum + (Number(day.credits) || 0), 0);
+        this._pulseTotal.text = this._money(total);
+        for (let index = 0; index < 7; index++) {
+            const day = daily[index] || {};
+            const credits = Number(day.credits) || 0;
+            this._dailyBars[index].height = Math.round(6 + (credits / maximum) * 44);
+            this._dailyLabels[index].text = day.label || '·';
+            if (index === daily.length - 1)
+                this._dailyBars[index].add_style_class_name('credit-pulse-chart-bar-current');
+            else
+                this._dailyBars[index].remove_style_class_name('credit-pulse-chart-bar-current');
+        }
+
         const entitlement = Number(current.entitlement || 0);
         const remaining = Number(current.remaining || 0);
         if (entitlement > 0) {
             this._allowanceText.text = `${this._money(used)} / ${this._money(entitlement)}`;
             this._remaining.text = `${this._money(remaining)} remaining`;
             const fraction = Math.max(0, Math.min(1, used / entitlement));
-            this._progress.width = Math.round(310 * fraction);
+            this._progress.width = Math.round(350 * fraction);
         } else {
             this._allowanceText.text = 'Not reported';
             this._remaining.text = '';
@@ -280,6 +338,8 @@ class CreditIndicator extends PanelMenu.Button {
     }
 
     _money(value, signed = false) {
+        if (value === null || value === undefined)
+            return '—';
         const parsed = Number(value) / 100.0;
         if (!Number.isFinite(parsed))
             return '—';
