@@ -1,28 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo="${GH_AI_CREDIT_PULSE_REPO:-probably-undefined/gh-ai-credit-pulse}"
-ref="${GH_AI_CREDIT_PULSE_REF:-main}"
-uuid="gh-ai-credit-pulse@probably-undefined"
+# This identity is intentionally not configurable. Updates must always verify
+# against the canonical repository, never against a similarly named fork.
+readonly repo="probably-undefined/gh-ai-credit-pulse"
+readonly uuid="gh-ai-credit-pulse@probably-undefined"
+readonly bundle_name="gh-ai-credit-pulse-linux-x86_64.tar.gz"
+readonly release_base="https://github.com/${repo}/releases/latest/download"
+
 data_home="${XDG_DATA_HOME:-${HOME}/.local/share}"
 target_dir="${data_home}/gh-ai-credit-pulse"
 extension_dir="${data_home}/gnome-shell/extensions/${uuid}"
 bin_dir="${HOME}/.local/bin"
-update=false
-from_archive=false
+from_bundle=false
 enable_extension=true
 
 while (($#)); do
     case "$1" in
-        --update) update=true ;;
-        --from-archive) from_archive=true ;;
+        --update) ;;
+        --from-bundle) from_bundle=true ;;
         --no-extension) enable_extension=false ;;
         -h|--help)
             printf '%s\n' \
                 'Usage: install.sh [--no-extension] [--update]' \
                 '' \
                 '  --no-extension  Install only the cross-platform Iced dashboard' \
-                '  --update        Download and install the newest main branch'
+                '  --update        Download and install the newest verified release'
             exit 0
             ;;
         *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
@@ -30,76 +33,88 @@ while (($#)); do
     shift
 done
 
-script_path="${BASH_SOURCE[0]:-}"
+# BASH_SOURCE can be an empty special array when this script arrives via a
+# pipe. Expanding the array itself is safe on the older Bash in Ubuntu 22.04.
+script_path="${BASH_SOURCE:-}"
 project_dir=""
 if [[ -n "${script_path}" ]]; then
     project_dir="$(cd -- "$(dirname -- "${script_path}")" 2>/dev/null && pwd || true)"
 fi
 
-download_latest() {
-    if ! command -v curl >/dev/null 2>&1; then
-        printf 'Missing required command: curl\n' >&2
+require_command() {
+    if ! command -v "$1" >/dev/null 2>&1; then
+        printf 'Missing required command: %s\n' "$1" >&2
         exit 1
     fi
+}
+
+download_verified_bundle() {
+    for command_name in curl gh sha256sum tar /usr/bin/python3; do
+        require_command "${command_name}"
+    done
+    if ! gh attestation --help >/dev/null 2>&1; then
+        printf '%s\n' \
+            'Your GitHub CLI is too old to verify release provenance.' \
+            'Update gh, then run this installer again. Installation stopped safely.' >&2
+        exit 1
+    fi
+
     download_dir="$(mktemp -d)"
-    archive="${download_dir}/source.tar.gz"
+    archive="${download_dir}/${bundle_name}"
+    checksum="${archive}.sha256"
     cleanup() { rm -rf -- "${download_dir}"; }
     trap cleanup EXIT
-    printf 'Downloading %s@%s…\n' "${repo}" "${ref}"
-    curl -fsSL "https://github.com/${repo}/archive/refs/heads/${ref}.tar.gz" -o "${archive}"
-    tar -xzf "${archive}" -C "${download_dir}"
-    source_dir="$(find "${download_dir}" -mindepth 1 -maxdepth 1 -type d -print -quit)"
-    if [[ -z "${source_dir}" || ! -f "${source_dir}/install.sh" ]]; then
-        printf 'Downloaded archive does not contain install.sh\n' >&2
-        exit 1
-    fi
-    child_args=(--from-archive)
+
+    printf 'Downloading verified release from %s…\n' "${repo}"
+    curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+        "${release_base}/${bundle_name}" -o "${archive}"
+    curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+        "${release_base}/${bundle_name}.sha256" -o "${checksum}"
+
+    (cd "${download_dir}" && sha256sum --check --strict "${bundle_name}.sha256")
+    gh attestation verify "${archive}" --repo "${repo}" >/dev/null
+    printf 'Checksum and GitHub build provenance verified.\n'
+
+    /usr/bin/python3 - "${archive}" "${download_dir}" <<'PY'
+import pathlib
+import sys
+import tarfile
+
+archive, destination = sys.argv[1:]
+with tarfile.open(archive, "r:gz") as bundle:
+    for member in bundle.getmembers():
+        path = pathlib.PurePosixPath(member.name)
+        if path.is_absolute() or ".." in path.parts or not path.parts:
+            raise SystemExit(f"Unsafe archive path: {member.name}")
+        if path.parts[0] != "gh-ai-credit-pulse":
+            raise SystemExit(f"Unexpected archive root: {member.name}")
+        if not (member.isfile() or member.isdir()):
+            raise SystemExit(f"Unsupported archive entry: {member.name}")
+    bundle.extractall(destination)
+PY
+
+    child_args=(--from-bundle)
     [[ "${enable_extension}" == false ]] && child_args+=(--no-extension)
-    bash "${source_dir}/install.sh" "${child_args[@]}"
+    bash "${download_dir}/gh-ai-credit-pulse/install.sh" "${child_args[@]}"
     cleanup
     trap - EXIT
     exit 0
 }
 
-if [[ "${update}" == true && "${from_archive}" == false ]]; then
-    download_latest
-fi
-if [[ ! -f "${project_dir}/extension/extension.js" || ! -f "${project_dir}/scripts/gh_ai_credits.py" ]]; then
-    download_latest
+if [[ "${from_bundle}" == false ]]; then
+    download_verified_bundle
 fi
 
-for command_name in curl gh /usr/bin/python3; do
-    if ! command -v "${command_name}" >/dev/null 2>&1; then
-        printf 'Missing required command: %s\n' "${command_name}" >&2
-        exit 1
-    fi
+if [[ ! -x "${project_dir}/gh-ai-credit-pulse-gui" ||
+      ! -f "${project_dir}/extension/extension.js" ||
+      ! -f "${project_dir}/scripts/gh_ai_credits.py" ]]; then
+    printf 'Verified release bundle is incomplete; refusing to install.\n' >&2
+    exit 1
+fi
+
+for command_name in gh /usr/bin/python3; do
+    require_command "${command_name}"
 done
-
-case "$(uname -s)-$(uname -m)" in
-    Linux-x86_64) asset_name="gh-ai-credit-pulse-linux-x86_64" ;;
-    *)
-        printf 'No prebuilt binary for %s/%s yet.\n' "$(uname -s)" "$(uname -m)" >&2
-        exit 1
-        ;;
-esac
-
-binary_tmp="$(mktemp)"
-trap 'rm -f -- "${binary_tmp}"' EXIT
-binary_url="${GH_AI_CREDIT_PULSE_BINARY_URL:-https://github.com/${repo}/releases/download/latest/${asset_name}}"
-printf 'Downloading Rust/Iced dashboard…\n'
-if ! curl -fsSL "${binary_url}" -o "${binary_tmp}"; then
-    if command -v cargo >/dev/null 2>&1; then
-        printf 'No prebuilt release found; building it locally with Cargo…\n'
-        cargo build --release --manifest-path "${project_dir}/Cargo.toml"
-        install -m 0755 -- "${project_dir}/target/release/gh-ai-credit-pulse" "${binary_tmp}"
-    else
-        printf '%s\n' \
-            'No prebuilt release is available yet and Cargo is not installed.' \
-            'Please retry shortly after the GitHub build has completed.' >&2
-        exit 1
-    fi
-fi
-chmod 0755 "${binary_tmp}"
 
 if [[ -e "${target_dir}" ]]; then
     backup_dir="${target_dir}.backup.$(date +%Y%m%d-%H%M%S)"
@@ -108,7 +123,7 @@ if [[ -e "${target_dir}" ]]; then
 fi
 
 install -d -- "${target_dir}/scripts" "${bin_dir}"
-install -m 0755 -- "${binary_tmp}" "${target_dir}/gh-ai-credit-pulse-gui"
+install -m 0755 -- "${project_dir}/gh-ai-credit-pulse-gui" "${target_dir}/gh-ai-credit-pulse-gui"
 install -m 0755 -- "${project_dir}/install.sh" "${target_dir}/install.sh"
 install -m 0755 -- "${project_dir}/gh-ai-credit-pulse" "${bin_dir}/gh-ai-credit-pulse"
 install -m 0755 -- "${project_dir}/scripts/gh_ai_credits.py" "${target_dir}/scripts/"
@@ -116,10 +131,7 @@ install -m 0644 -- "${project_dir}/VERSION" "${target_dir}/VERSION"
 install -m 0644 -- "${project_dir}/README.md" "${target_dir}/README.md"
 
 if [[ "${enable_extension}" == true ]]; then
-    if ! command -v gnome-extensions >/dev/null 2>&1; then
-        printf 'GNOME Extensions CLI is missing; install package gnome-shell first.\n' >&2
-        exit 1
-    fi
+    require_command gnome-extensions
     install -d -- "${extension_dir}/scripts"
     install -m 0644 -- "${project_dir}/extension/extension.js" "${extension_dir}/extension.js"
     install -m 0644 -- "${project_dir}/extension/metadata.json" "${extension_dir}/metadata.json"
