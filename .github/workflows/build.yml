@@ -146,7 +146,7 @@ jobs:
             "release/${asset}" "release/${asset}.sha256" \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "gh-ai-credit-pulse $(cat release/VERSION 2>/dev/null || printf '%s' "$short_sha")" \
+            --title "gh-ai-credit-pulse pre-release (${short_sha})" \
             --notes "Automated, provenance-attested build from the canonical main branch." \
             --generate-notes \
             --prerelease
