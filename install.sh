@@ -72,7 +72,11 @@ download_verified_bundle() {
         "${release_base}/${bundle_name}.sha256" -o "${checksum}"
 
     (cd "${download_dir}" && sha256sum --check --strict "${bundle_name}.sha256")
-    gh attestation verify "${archive}" --repo "${repo}" >/dev/null
+    gh attestation verify "${archive}" \
+        --repo "${repo}" \
+        --signer-workflow "${repo}/.github/workflows/build.yml" \
+        --source-ref "refs/heads/main" \
+        --deny-self-hosted-runners >/dev/null
     printf 'Checksum and GitHub build provenance verified.\n'
 
     /usr/bin/python3 - "${archive}" "${download_dir}" <<'PY'
