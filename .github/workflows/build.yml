@@ -53,30 +53,6 @@ jobs:
           wait "$rust_setup_pid"
           rustup default 1.96.0
 
-      - name: Resolve Rust dependencies
-        run: cargo generate-lockfile
-
-      - name: Upload generated dependency lock
-        if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: generated-cargo-lock
-          path: Cargo.lock
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: Format Rust sources
-        run: cargo fmt --all
-
-      - name: Upload formatted Rust sources
-        if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: formatted-rust-sources
-          path: src
-          if-no-files-found: error
-          retention-days: 1
-
       - name: Test and build Rust binaries
         run: |
           cargo fmt --all -- --check
