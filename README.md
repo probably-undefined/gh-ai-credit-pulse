@@ -18,8 +18,10 @@ The conversion is fixed at **100 AIC = $1.00**.
 curl -fsSL https://raw.githubusercontent.com/probably-undefined/gh-ai-credit-pulse/main/install.sh | bash
 ```
 
-The installer downloads the latest prebuilt Rust binary, installs the GNOME 42
-extension, enables it, and creates `~/.local/bin/gh-ai-credit-pulse`.
+The installer downloads the latest provenance-attested release bundle, verifies
+its SHA-256 checksum and GitHub build identity, installs the GNOME 42 extension,
+enables it, and creates `~/.local/bin/gh-ai-credit-pulse`. An up-to-date GitHub
+CLI with `gh attestation` support is required; verification fails closed.
 
 If GNOME has not discovered a newly installed extension in the running Wayland
 session, log out and back in once, then run:
@@ -82,8 +84,24 @@ python3 scripts/gh_ai_credits.py export --output gh-ai-credit-history.csv
 cargo build --release
 ```
 
-GitHub Actions builds the Linux binary on every push to `main` and publishes it
+GitHub Actions builds the Linux bundle on every push to `main` and publishes it
 as the rolling `latest` release consumed by the installer.
+
+## Supply-chain security
+
+- Dependencies are locked in `Cargo.lock` and release builds use `--locked`.
+- Every GitHub Action is pinned to an immutable full commit SHA.
+- Pull requests and forks receive only `contents: read`; they cannot publish.
+- The privileged publish job runs only for this canonical repository's `main`
+  branch and never checks out or executes repository code.
+- Releases use unique immutable tags instead of replacing a shared tag.
+- The complete bundle is SHA-256 checked and carries GitHub/Sigstore build
+  provenance. The installer verifies both before extracting anything.
+- Archive paths and entry types are validated before extraction.
+
+A fork can build its own copy, but it cannot produce an attestation whose
+repository identity is `probably-undefined/gh-ai-credit-pulse`. The canonical
+installer does not accept a repository override.
 
 ## Data and privacy
 

@@ -8,50 +8,107 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test-and-build:
     runs-on: ubuntu-22.04
     permissions:
-      contents: write
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      # Every action is pinned to an immutable, audited commit.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          fetch-depth: 0
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
+          fetch-depth: 1
+          persist-credentials: false
 
       - name: Test collector
-        run: python -m unittest discover -s tests -v
+        run: python3 -m unittest discover -s tests -v
 
       - name: Check scripts and metadata
         run: |
-          python -m py_compile scripts/gh_ai_credits.py tests/test_collector.py
-          python -m json.tool extension/metadata.json >/dev/null
+          python3 -m py_compile scripts/gh_ai_credits.py tests/test_collector.py
+          python3 -m json.tool extension/metadata.json >/dev/null
           bash -n install.sh gh-ai-credit-pulse
 
       - name: Install Iced build dependencies
         run: sudo apt-get update && sudo apt-get install -y pkg-config libwayland-dev libxkbcommon-dev libudev-dev
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Select pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --no-self-update
+          rustup default 1.96.0
 
-      - name: Build release binary
-        run: cargo build --release
+      - name: Build locked release binary
+        run: cargo build --release --locked
 
-      - name: Publish rolling release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Assemble deterministic release bundle
+        if: >-
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' &&
+          github.repository == 'probably-undefined/gh-ai-credit-pulse'
+        run: |
+          asset=gh-ai-credit-pulse-linux-x86_64.tar.gz
+          root=staging/gh-ai-credit-pulse
+          install -d "$root/extension" "$root/scripts" release
+          install -m 0755 target/release/gh-ai-credit-pulse "$root/gh-ai-credit-pulse-gui"
+          install -m 0755 install.sh gh-ai-credit-pulse "$root/"
+          install -m 0755 scripts/gh_ai_credits.py "$root/scripts/"
+          install -m 0644 extension/extension.js extension/metadata.json extension/stylesheet.css "$root/extension/"
+          install -m 0644 VERSION README.md LICENSE "$root/"
+          epoch="$(git log -1 --format=%ct)"
+          tar --sort=name --mtime="@${epoch}" --owner=0 --group=0 --numeric-owner \
+            -czf "release/${asset}" -C staging gh-ai-credit-pulse
+          (cd release && sha256sum "$asset" >"${asset}.sha256")
+
+      - name: Upload isolated build output
+        if: >-
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' &&
+          github.repository == 'probably-undefined/gh-ai-credit-pulse'
+        id: upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-bundle
+          path: release/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      github.repository == 'probably-undefined/gh-ai-credit-pulse'
+    needs: test-and-build
+    runs-on: ubuntu-22.04
+    permissions:
+      actions: read
+      attestations: write
+      contents: write
+      id-token: write
+    steps:
+      # This privileged job never checks out or executes repository code.
+      - name: Download verified workflow artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-bundle
+          path: release
+
+      - name: Attest release provenance
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-path: release/gh-ai-credit-pulse-linux-x86_64.tar.gz
+
+      - name: Publish immutable release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          install -m 0755 target/release/gh-ai-credit-pulse gh-ai-credit-pulse-linux-x86_64
-          gh release delete latest --cleanup-tag -y || true
-          git tag -d latest || true
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git tag latest
-          git push origin latest
-          gh release create latest gh-ai-credit-pulse-linux-x86_64 \
-            --title "Latest build" \
-            --notes "Rolling release built from main." \
+          tag="build-${GITHUB_SHA:0:12}"
+          gh release create "$tag" release/gh-ai-credit-pulse-linux-x86_64.tar.gz* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Verified build ${GITHUB_SHA:0:12}" \
+            --notes "Automated, provenance-attested build from the protected main branch." \
             --latest
