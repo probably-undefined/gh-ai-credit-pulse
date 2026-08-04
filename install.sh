@@ -248,16 +248,23 @@ fi
 
 if [[ "${enable_extension}" == true ]]; then
     require_command gnome-extensions
+    extension_was_installed=false
+    [[ -f "${extension_dir}/extension.js" ]] && extension_was_installed=true
+
     install -d -- "${extension_dir}/scripts"
     install -m 0644 -- "${project_dir}/extension/extension.js" "${extension_dir}/extension.js"
     install -m 0644 -- "${project_dir}/extension/metadata.json" "${extension_dir}/metadata.json"
     install -m 0644 -- "${project_dir}/extension/stylesheet.css" "${extension_dir}/stylesheet.css"
     install -m 0755 -- "${project_dir}/scripts/gh_ai_credits.py" "${extension_dir}/scripts/"
 
-    gnome-extensions disable "${uuid}" >/dev/null 2>&1 || true
-    # Let GNOME Shell fully unload the old JavaScript and stylesheet before reload.
-    sleep 1
-    if gnome-extensions enable "${uuid}"; then
+    if [[ "${extension_was_installed}" == true ]]; then
+        # GNOME 42 caches extension modules for the lifetime of the Wayland
+        # session. Disable/enable only calls the old module again.
+        gnome-extensions enable "${uuid}" >/dev/null 2>&1 || true
+        printf '%s\n' \
+            "Updated GNOME extension ${uuid}." \
+            'GNOME 42 requires one logout/login to load changed extension code.'
+    elif gnome-extensions enable "${uuid}"; then
         printf 'Enabled GNOME extension %s\n' "${uuid}"
     else
         printf '%s\n' \
