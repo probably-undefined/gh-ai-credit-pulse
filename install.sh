@@ -83,7 +83,11 @@ releases = json.load(sys.stdin)
 tag_pattern = re.compile(r"^build-([0-9a-f]{12})$")
 asset_pattern = re.compile(r"^gh-ai-credit-pulse-linux-x86_64-([0-9a-f]{12})\.tar\.gz$")
 
-for release in releases:
+for release in sorted(
+    releases,
+    key=lambda item: item.get("published_at") or item.get("created_at") or "",
+    reverse=True,
+):
     if release.get("draft"):
         continue
     tag_match = tag_pattern.fullmatch(release.get("tag_name", ""))
