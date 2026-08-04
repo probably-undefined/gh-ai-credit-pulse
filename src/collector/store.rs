@@ -1,5 +1,5 @@
-use super::model::Snapshot;
 use super::Result;
+use super::model::Snapshot;
 use chrono::{DateTime, Utc};
 use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 use serde_json::Value;
@@ -53,7 +53,8 @@ impl Store {
 
     fn configure(&self) -> Result<()> {
         self.connection.pragma_update(None, "journal_mode", "WAL")?;
-        self.connection.pragma_update(None, "synchronous", "NORMAL")?;
+        self.connection
+            .pragma_update(None, "synchronous", "NORMAL")?;
         self.connection.pragma_update(None, "busy_timeout", 5_000)?;
         Ok(())
     }
@@ -191,7 +192,9 @@ impl Store {
                 optional_number(row.remaining),
                 optional_number(row.percent_remaining),
                 row.overage_count.to_string(),
-                row.reset_at.map(|value| value.to_string()).unwrap_or_default(),
+                row.reset_at
+                    .map(|value| value.to_string())
+                    .unwrap_or_default(),
                 row.plan.unwrap_or_default(),
             ])?;
         }
