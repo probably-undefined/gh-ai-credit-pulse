@@ -24,13 +24,9 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Test collector
-        run: python3 -m unittest discover -s tests -v
-
       - name: Check scripts and metadata
         run: |
-          python3 -m py_compile scripts/gh_ai_credits.py tests/test_collector.py
-          python3 -m json.tool extension/metadata.json >/dev/null
+          jq empty extension/metadata.json
           bash -n install.sh gh-ai-credit-pulse
 
       - name: Restore Rust build cache
@@ -51,14 +47,29 @@ jobs:
           (sudo apt-get update && sudo apt-get install -y \
             pkg-config libwayland-dev libxkbcommon-dev libudev-dev) &
           native_setup_pid=$!
-          rustup toolchain install 1.96.0 --profile minimal --no-self-update &
+          rustup toolchain install 1.96.0 --profile minimal --component rustfmt --no-self-update &
           rust_setup_pid=$!
           wait "$native_setup_pid"
           wait "$rust_setup_pid"
           rustup default 1.96.0
 
-      - name: Build locked release binary
-        run: cargo build --release --locked
+      - name: Resolve Rust dependencies
+        run: cargo generate-lockfile
+
+      - name: Upload generated dependency lock
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: generated-cargo-lock
+          path: Cargo.lock
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Test and build Rust binaries
+        run: |
+          cargo fmt --all -- --check
+          cargo test --all-targets --locked
+          cargo build --release --locked
 
       - name: Assemble deterministic release bundle
         if: >-
@@ -68,10 +79,11 @@ jobs:
         run: |
           asset="gh-ai-credit-pulse-linux-x86_64-${GITHUB_SHA:0:12}.tar.gz"
           root=staging/gh-ai-credit-pulse
-          install -d "$root/assets" "$root/extension" "$root/scripts" release
+          install -d "$root/assets" "$root/extension" release
           install -m 0755 target/release/gh-ai-credit-pulse "$root/gh-ai-credit-pulse-gui"
+          install -m 0755 target/release/gh-ai-credit-pulse-collector \
+            "$root/gh-ai-credit-pulse-collector"
           install -m 0755 install.sh gh-ai-credit-pulse "$root/"
-          install -m 0755 scripts/gh_ai_credits.py "$root/scripts/"
           install -m 0644 assets/io.github.probably_undefined.GhAiCreditPulse.desktop \
             assets/gh-ai-credit-pulse.png "$root/assets/"
           install -m 0644 extension/extension.js extension/metadata.json extension/stylesheet.css "$root/extension/"
