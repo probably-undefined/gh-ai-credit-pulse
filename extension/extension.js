@@ -20,6 +20,16 @@ class CreditIndicator extends PanelMenu.Button {
         this._cancellable = new Gio.Cancellable();
         this._collector = GLib.build_filenamev([Me.path, 'scripts', 'gh_ai_credits.py']);
         this.menu.box.add_style_class_name('credit-pulse-menu-content');
+        this.menu.box.set_style(
+            'padding: 0; color: #f8faff; background-color: #070a12; ' +
+            'border: 1px solid rgba(79, 96, 135, 0.72); border-radius: 16px; ' +
+            'box-shadow: 0 18px 52px rgba(0, 0, 0, 0.68);'
+        );
+        this.menu.actor.set_style(
+            '-arrow-background-color: #070a12; ' +
+            '-arrow-border-color: rgba(79, 96, 135, 0.72); ' +
+            '-arrow-border-width: 1px;'
+        );
 
         this._panelLabel = new St.Label({
             text: '$—',
@@ -192,37 +202,52 @@ class CreditIndicator extends PanelMenu.Button {
         });
         dashboard.add_child(this._error);
 
-        this.menu.addMenuItem(contentItem);
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        const actions = new St.BoxLayout({style_class: 'credit-pulse-actions'});
+        const refreshButton = new St.Button({
+            label: 'Refresh',
+            x_expand: true,
+            can_focus: true,
+            style_class: 'credit-pulse-action-button',
+        });
+        refreshButton.connect('clicked', () => this._refresh(true));
+        actions.add_child(refreshButton);
 
-        const refreshItem = new PopupMenu.PopupMenuItem('↻   Refresh now');
-        refreshItem.add_style_class_name('credit-pulse-action');
-        refreshItem.connect('activate', () => this._refresh(true));
-        this.menu.addMenuItem(refreshItem);
-
-        const dashboardItem = new PopupMenu.PopupMenuItem('↗   Open full dashboard');
-        dashboardItem.add_style_class_name('credit-pulse-action');
-        dashboardItem.connect('activate', () => {
+        const dashboardButton = new St.Button({
+            label: 'Open dashboard',
+            x_expand: true,
+            can_focus: true,
+            style_class: 'credit-pulse-action-button',
+        });
+        dashboardButton.connect('clicked', () => {
             const launcher = GLib.build_filenamev([GLib.get_home_dir(), '.local', 'bin', 'gh-ai-credit-pulse']);
             try {
                 Gio.Subprocess.new([launcher], Gio.SubprocessFlags.NONE);
+                this.menu.close();
             } catch (error) {
                 this._showError(`Could not open dashboard: ${error.message}`);
             }
         });
-        this.menu.addMenuItem(dashboardItem);
+        actions.add_child(dashboardButton);
 
-        const updateItem = new PopupMenu.PopupMenuItem('↓   Install latest update');
-        updateItem.add_style_class_name('credit-pulse-action');
-        updateItem.connect('activate', () => {
+        const updateButton = new St.Button({
+            label: 'Update',
+            x_expand: true,
+            can_focus: true,
+            style_class: 'credit-pulse-action-button',
+        });
+        updateButton.connect('clicked', () => {
             const launcher = GLib.build_filenamev([GLib.get_home_dir(), '.local', 'bin', 'gh-ai-credit-pulse']);
             try {
                 Gio.Subprocess.new([launcher, '--self-update'], Gio.SubprocessFlags.NONE);
+                this.menu.close();
             } catch (error) {
                 this._showError(`Could not start updater: ${error.message}`);
             }
         });
-        this.menu.addMenuItem(updateItem);
+        actions.add_child(updateButton);
+        dashboard.add_child(actions);
+
+        this.menu.addMenuItem(contentItem);
     }
 
     _queueClose() {

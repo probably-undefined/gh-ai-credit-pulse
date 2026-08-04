@@ -18,35 +18,12 @@
   box-shadow: 0 18px 52px rgba(0, 0, 0, 0.68);
 }
 
-.credit-pulse-menu-content .popup-separator-menu-item .popup-separator-menu-item-separator {
-  background-color: rgba(79, 96, 135, 0.34);
-  margin: 5px 10px;
-}
-
-.credit-pulse-menu-content .credit-pulse-action {
-  color: #cbd3e2;
-  border-radius: 10px;
-  margin: 1px 5px;
-  padding: 9px 13px;
-  font-size: 12px;
-}
-
-.credit-pulse-menu-content .credit-pulse-action:hover,
-.credit-pulse-menu-content .credit-pulse-action:focus,
-.credit-pulse-menu-content .credit-pulse-action:selected {
-  color: #ffffff;
-  background-color: rgba(91, 66, 196, 0.30);
-}
-
 .credit-pulse-dashboard {
   width: 390px;
   padding: 18px;
   spacing: 14px;
   color: #f8faff;
-  background-color: #080b14;
-  border: 1px solid rgba(79, 96, 135, 0.42);
-  border-radius: 16px;
-  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.42);
+  background-color: transparent;
 }
 
 .credit-pulse-header {
@@ -219,4 +196,30 @@
   border-radius: 10px;
   padding: 9px;
   font-size: 10px;
+}
+
+.credit-pulse-actions {
+  spacing: 8px;
+  padding-top: 2px;
+}
+
+.credit-pulse-action-button {
+  color: #cbd3e2;
+  background-color: rgba(16, 23, 40, 0.96);
+  border: 1px solid rgba(79, 96, 135, 0.62);
+  border-radius: 10px;
+  padding: 9px 11px;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.credit-pulse-action-button:hover,
+.credit-pulse-action-button:focus {
+  color: #ffffff;
+  background-color: rgba(91, 66, 196, 0.28);
+  border-color: rgba(139, 92, 246, 0.62);
+}
+
+.credit-pulse-action-button:active {
+  background-color: rgba(91, 66, 196, 0.42);
 }
