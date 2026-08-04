@@ -129,40 +129,24 @@ jobs:
             --source-ref "refs/heads/main" \
             --deny-self-hosted-runners
 
-      - name: Publish rolling release
+      - name: Publish immutable pre-release with changelog
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag=latest
+          short_sha="${GITHUB_SHA:0:12}"
+          tag="build-${short_sha}"
+          asset="gh-ai-credit-pulse-linux-x86_64-${short_sha}.tar.gz"
 
-          # A GitHub release always requires a tag. Replace the single rolling
-          # tag instead of leaving one permanent build tag behind per commit.
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
-          else
-            gh api --method DELETE \
-              "repos/${GITHUB_REPOSITORY}/git/refs/tags/${tag}" >/dev/null 2>&1 || true
-          fi
+          test -f "release/${asset}"
+          test -f "release/${asset}.sha256"
 
-          gh release create "$tag" release/* \
+          # The tag, filenames, checksum, and attestation all bind the release
+          # to one immutable commit. GitHub-generated notes provide the changelog.
+          gh release create "$tag" \
+            "release/${asset}" "release/${asset}.sha256" \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "Latest verified build (${GITHUB_SHA:0:12})" \
-            --notes "Automated, provenance-attested build from the protected main branch." \
-            --latest
-
-          # One-time cleanup of tags/releases created by the old per-build scheme.
-          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 \
-            --json tagName --jq '.[].tagName | select(startswith("build-"))' |
-          while IFS= read -r stale_tag; do
-            gh release delete "$stale_tag" \
-              --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
-          done
-
-          gh api --paginate \
-            "repos/${GITHUB_REPOSITORY}/git/matching-refs/tags/build-" \
-            --jq '.[].ref' |
-          while IFS= read -r stale_ref; do
-            gh api --method DELETE \
-              "repos/${GITHUB_REPOSITORY}/git/refs/${stale_ref#refs/}"
-          done
+            --title "gh-ai-credit-pulse $(cat release/VERSION 2>/dev/null || printf '%s' "$short_sha")" \
+            --notes "Automated, provenance-attested build from the canonical main branch." \
+            --generate-notes \
+            --prerelease
