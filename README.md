@@ -95,6 +95,8 @@ as the rolling `latest` release consumed by the installer.
 - The privileged publish job runs only for this canonical repository's `main`
   branch and never checks out or executes repository code.
 - Releases use unique immutable tags instead of replacing a shared tag.
+- The installer resolves `latest` once and pins both downloads to that exact
+  immutable tag, preventing mixed assets during CDN cache propagation.
 - The complete bundle is SHA-256 checked and carries GitHub/Sigstore build
   provenance. The installer verifies the exact signer workflow, canonical
   `main` ref, and GitHub-hosted runner policy before extracting anything.
