@@ -12,5 +12,7 @@ The privileged job consumes a GitHub-hosted artifact, attests it, and publishes
 it without checking out or executing repository code.
 
 Installers verify the complete release archive with SHA-256 and
-`gh attestation verify --repo probably-undefined/gh-ai-credit-pulse`. Any
-verification failure stops installation before extraction.
+`gh attestation verify --repo probably-undefined/gh-ai-credit-pulse`, pins the
+signer to `.github/workflows/build.yml`, requires `refs/heads/main`, and rejects
+self-hosted builders. Any verification failure stops installation before
+extraction.
