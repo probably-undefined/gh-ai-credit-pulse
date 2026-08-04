@@ -42,15 +42,13 @@ jobs:
           rustup default 1.96.0
 
       - name: Build locked release binary
-        run: |
-          if [[ ! -f Cargo.lock ]]; then
-            cargo generate-lockfile
-          fi
-          cargo build --release --locked
+        run: cargo build --release --locked
 
       - name: Assemble deterministic release bundle
-        env:
-          SOURCE_DATE_EPOCH: ${{ github.event.repository.updated_at }}
+        if: >-
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' &&
+          github.repository == 'probably-undefined/gh-ai-credit-pulse'
         run: |
           asset=gh-ai-credit-pulse-linux-x86_64.tar.gz
           root=staging/gh-ai-credit-pulse
@@ -66,13 +64,15 @@ jobs:
           (cd release && sha256sum "$asset" >"${asset}.sha256")
 
       - name: Upload isolated build output
+        if: >-
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' &&
+          github.repository == 'probably-undefined/gh-ai-credit-pulse'
         id: upload
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-bundle
-          path: |
-            release/*
-            Cargo.lock
+          path: release/*
           if-no-files-found: error
           retention-days: 1
 
