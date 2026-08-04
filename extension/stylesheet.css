@@ -1,0 +1,105 @@
+.credit-pulse-panel-label {
+  color: #ffffff;
+  font-weight: 700;
+  padding: 0 5px;
+}
+
+.credit-pulse-menu-item {
+  padding: 0;
+}
+
+.credit-pulse-dashboard {
+  width: 350px;
+  padding: 16px;
+  spacing: 12px;
+}
+
+.credit-pulse-header {
+  spacing: 10px;
+}
+
+.credit-pulse-title {
+  color: #f7f9ff;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.credit-pulse-subtitle,
+.credit-pulse-detail {
+  color: #8f9aaf;
+  font-size: 10px;
+}
+
+.credit-pulse-status {
+  color: #74e1ba;
+  background-color: rgba(23, 45, 42, 0.95);
+  border: 1px solid #275146;
+  border-radius: 12px;
+  padding: 4px 9px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.credit-pulse-status-error {
+  color: #ff91a0;
+  background-color: rgba(58, 32, 42, 0.95);
+  border-color: #713844;
+}
+
+.credit-pulse-hero,
+.credit-pulse-card,
+.credit-pulse-allowance {
+  background-color: rgba(30, 36, 50, 0.92);
+  border: 1px solid rgba(72, 82, 105, 0.62);
+  border-radius: 13px;
+  padding: 12px;
+  spacing: 5px;
+}
+
+.credit-pulse-kicker {
+  color: #9ba7bb;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.credit-pulse-hero-value {
+  color: #ffffff;
+  font-size: 30px;
+  font-weight: 600;
+}
+
+.credit-pulse-metrics {
+  spacing: 8px;
+}
+
+.credit-pulse-card {
+  width: 92px;
+}
+
+.credit-pulse-card-value {
+  color: #f5f7fb;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.credit-pulse-progress-track {
+  width: 310px;
+  height: 7px;
+  background-color: #293247;
+  border-radius: 4px;
+}
+
+.credit-pulse-progress {
+  height: 7px;
+  background-color: #7c8cff;
+  border-radius: 4px;
+}
+
+.credit-pulse-error {
+  color: #ff9aaa;
+  background-color: rgba(52, 32, 42, 0.95);
+  border: 1px solid #653443;
+  border-radius: 9px;
+  padding: 8px;
+  font-size: 10px;
+}

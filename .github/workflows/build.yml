@@ -1,0 +1,57 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Test collector
+        run: python -m unittest discover -s tests -v
+
+      - name: Check scripts and metadata
+        run: |
+          python -m py_compile scripts/gh_ai_credits.py tests/test_collector.py
+          python -m json.tool extension/metadata.json >/dev/null
+          bash -n install.sh gh-ai-credit-pulse
+
+      - name: Install Iced build dependencies
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libwayland-dev libxkbcommon-dev libudev-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Publish rolling release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          install -m 0755 target/release/gh-ai-credit-pulse gh-ai-credit-pulse-linux-x86_64
+          gh release delete latest --cleanup-tag -y || true
+          git tag -d latest || true
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git tag latest
+          git push origin latest
+          gh release create latest gh-ai-credit-pulse-linux-x86_64 \
+            --title "Latest build" \
+            --notes "Rolling release built from main." \
+            --latest

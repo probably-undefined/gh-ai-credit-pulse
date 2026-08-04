@@ -1,0 +1,17 @@
+[package]
+name = "gh-ai-credit-pulse"
+version = "1.0.0"
+edition = "2024"
+license = "MIT"
+description = "Modern GitHub Copilot AI credit dashboard built with Rust and Iced"
+repository = "https://github.com/probably-undefined/gh-ai-credit-pulse"
+
+[dependencies]
+iced = { version = "0.14", features = ["tokio"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

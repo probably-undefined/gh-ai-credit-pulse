@@ -1,0 +1,19 @@
+{
+  "copilot_plan": "business",
+  "quota_reset_date": "2026-09-01",
+  "quota_reset_date_utc": "2026-09-01T00:00:00.000Z",
+  "quota_snapshots": {
+    "premium_interactions": {
+      "quota_id": "premium_interactions",
+      "credits_used": 3027,
+      "entitlement": 10000,
+      "quota_remaining": 6973,
+      "remaining": 6973,
+      "percent_remaining": 69.73,
+      "overage_count": 0,
+      "overage_permitted": false,
+      "unlimited": false,
+      "timestamp_utc": "2026-08-04T06:00:00.000Z"
+    }
+  }
+}

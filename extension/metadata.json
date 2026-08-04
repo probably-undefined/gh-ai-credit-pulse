@@ -1,0 +1,8 @@
+{
+  "uuid": "gh-ai-credit-pulse@probably-undefined",
+  "name": "GitHub AI Credit Pulse",
+  "description": "Shows GitHub Copilot AI credit cost in the GNOME top bar and opens a dashboard on hover.",
+  "shell-version": ["42"],
+  "version": 1,
+  "url": "https://github.com/probably-undefined/gh-ai-credit-pulse"
+}
