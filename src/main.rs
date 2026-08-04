@@ -15,7 +15,7 @@ const SURFACE_HIGH: Color = Color::from_rgb(0.082, 0.102, 0.165);
 const HERO: Color = Color::from_rgb(0.094, 0.063, 0.180);
 const BORDER: Color = Color::from_rgb(0.157, 0.196, 0.294);
 const TEXT: Color = Color::from_rgb(0.973, 0.980, 1.0);
-const MUTED: Color = Color::from_rgb(0.545, 0.592, 0.690);
+const MUTED: Color = Color::from_rgb(0.620, 0.663, 0.753);
 const VIOLET: Color = Color::from_rgb(0.545, 0.361, 0.965);
 const CYAN: Color = Color::from_rgb(0.133, 0.827, 0.933);
 const MINT: Color = Color::from_rgb(0.204, 0.827, 0.600);
@@ -103,13 +103,12 @@ impl Dashboard {
         let current = &self.data.current;
         let metrics = &self.data.metrics;
         let used = current.credits_used.unwrap_or(0.0);
-        let entitlement = current.entitlement.unwrap_or(0.0);
-        let allowance_fraction = if entitlement > 0.0 {
-            (used / entitlement).clamp(0.0, 1.0) as f32
+        let entitlement = current.entitlement.filter(|value| *value > 0.0);
+        let (pace_label, pace_color) = if entitlement.is_some() {
+            pace_label(metrics.pace_delta)
         } else {
-            0.0
+            ("Plan pace unavailable".to_owned(), MUTED)
         };
-        let (pace_label, pace_color) = pace_label(metrics.pace_delta);
 
         let status = if self.refreshing {
             status_pill("SYNCING", MUTED)
@@ -148,9 +147,9 @@ impl Dashboard {
 
         let hero_copy = column![
             kicker("TOTAL COST THIS CYCLE", VIOLET),
-            text(money(Some(used), false)).size(58).color(TEXT),
+            text(money(current.credits_used, false)).size(58).color(TEXT),
             row![
-                text(format!("{} AI credits", number(Some(used))))
+                text(format!("{} AI credits", number(current.credits_used)))
                     .size(13)
                     .color(MUTED),
                 dot(),
@@ -164,18 +163,12 @@ impl Dashboard {
 
         let cycle_snapshot = container(
             column![
-                row![
-                    kicker("CYCLE SIGNAL", CYAN),
-                    Space::new().width(Length::Fill),
-                    status_pill(&pace_label, pace_color),
-                ]
-                .align_y(Alignment::Center),
-                text(format!(
-                    "{} projected",
-                    money(metrics.projected_at_reset, false)
-                ))
-                .size(24)
-                .color(TEXT),
+                kicker("CYCLE FORECAST", CYAN),
+                text(money(metrics.projected_at_reset, false))
+                    .size(24)
+                    .color(TEXT),
+                text("Projected cycle cost").size(11).color(MUTED),
+                text(pace_label).size(11).color(pace_color),
                 text(format!(
                     "{}  ·  {} local samples",
                     reset_text(current.reset_at),
@@ -184,11 +177,11 @@ impl Dashboard {
                 .size(11)
                 .color(MUTED),
             ]
-            .spacing(9),
+            .spacing(7),
         )
         .width(Length::FillPortion(2))
         .padding(16)
-        .style(|_| glass_style(CYAN));
+        .style(|_| glass_style());
 
         let hero = container(row![hero_copy, cycle_snapshot].spacing(28).align_y(Alignment::Center))
             .width(Length::Fill)
@@ -199,32 +192,49 @@ impl Dashboard {
             metric_card(
                 "TODAY",
                 money(metrics.delta_today, true),
-                format!("{} in the last hour", money(metrics.delta_1h, false)),
+                format!(
+                    "Since midnight  ·  {} last hour",
+                    money(metrics.delta_1h, false)
+                ),
                 CYAN,
-                "↗",
             ),
             metric_card(
-                "CURRENT VELOCITY",
+                "6H BURN RATE",
                 format!("{}/h", money(metrics.rate_per_hour, false)),
-                format!("{}/day cycle average", money(metrics.average_per_day, false)),
+                format!(
+                    "Observed rate  ·  {}/day cycle avg",
+                    money(metrics.average_per_day, false)
+                ),
                 PINK,
-                "≈",
             ),
             metric_card(
-                "30 DAY SIGNAL",
-                money(metrics.delta_30d, true),
-                format!("{} across 7 days", money(metrics.delta_7d, false)),
-                AMBER,
-                "◌",
+                "LAST 7 DAYS",
+                money(metrics.delta_7d, true),
+                format!(
+                    "{}/day recorded average",
+                    money(metrics.delta_7d.map(|credits| credits / 7.0), false)
+                ),
+                VIOLET,
             ),
         ]
         .spacing(14);
 
         let chart = daily_chart(&self.data.daily);
-        let allowance = allowance_panel(current, metrics, used, entitlement, allowance_fraction);
-        let lower = row![chart, allowance]
+        let lower: Element<'_, Message> = if let Some(entitlement) = entitlement {
+            let fraction = (used / entitlement).clamp(0.0, 1.0) as f32;
+            row![
+                chart,
+                allowance_panel(current, metrics, used, entitlement, fraction)
+            ]
             .spacing(14)
-            .height(Length::Fill);
+            .height(Length::Fill)
+            .into()
+        } else {
+            column![chart, allowance_unavailable()]
+                .spacing(12)
+                .height(Length::Fill)
+                .into()
+        };
 
         let footer = row![
             text(format!(
@@ -264,26 +274,42 @@ fn daily_chart<'a>(days: &[DailyUsage]) -> Element<'a, Message> {
         .fold(0.0_f64, f64::max)
         .max(1.0);
 
+    let active_days = visible.iter().filter(|day| day.credits > 0.0).count();
     let mut bars: Row<'a, Message> = Row::new()
         .spacing(7)
-        .height(Length::Fixed(128.0))
+        .height(Length::Fill)
         .align_y(Alignment::End);
 
-    if visible.is_empty() {
+    if active_days < 2 {
         bars = bars.push(
-            container(text("Usage bars appear as local history builds.").size(12).color(MUTED))
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .align_x(Alignment::Center)
-                .align_y(Alignment::Center),
+            container(
+                column![
+                    text("Collecting daily history").size(17).color(TEXT),
+                    text("The trend appears after usage is recorded on two different days.")
+                        .size(11)
+                        .color(MUTED),
+                ]
+                .spacing(7)
+                .align_x(Alignment::Center),
+            )
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .align_x(Alignment::Center)
+            .align_y(Alignment::Center),
         );
     } else {
         for (index, day) in visible.iter().enumerate() {
             let intensity = (day.credits / max_credits).clamp(0.0, 1.0) as f32;
-            let height = 12.0 + intensity * 82.0;
+            let height = if day.credits > 0.0 {
+                10.0 + intensity * 152.0
+            } else {
+                3.0
+            };
             let color = if index + 1 == visible.len() { CYAN } else { VIOLET };
-            let label = if index % 2 == 0 || index + 1 == visible.len() {
-                day.label.clone()
+            let label = if index + 1 == visible.len() {
+                "Today".to_owned()
+            } else if index % 2 == 0 {
+                short_date(&day.date)
             } else {
                 " ".to_owned()
             };
@@ -295,7 +321,11 @@ fn daily_chart<'a>(days: &[DailyUsage]) -> Element<'a, Message> {
                 column![
                     Space::new().height(Length::Fill),
                     bar,
-                    text(label).size(9).color(MUTED),
+                    text(label).size(9).color(if index + 1 == visible.len() {
+                        CYAN
+                    } else {
+                        MUTED
+                    }),
                 ]
                 .width(Length::FillPortion(1))
                 .height(Length::Fill)
@@ -310,7 +340,9 @@ fn daily_chart<'a>(days: &[DailyUsage]) -> Element<'a, Message> {
             row![
                 column![
                     kicker("DAILY PULSE", VIOLET),
-                    text("14-day usage rhythm").size(11).color(MUTED),
+                    text("Spend recorded over the last 14 days")
+                        .size(11)
+                        .color(MUTED),
                 ]
                 .spacing(3),
                 Space::new().width(Length::Fill),
@@ -324,13 +356,25 @@ fn daily_chart<'a>(days: &[DailyUsage]) -> Element<'a, Message> {
             .align_y(Alignment::Center),
             bars,
         ]
-        .spacing(13),
+        .spacing(15)
+        .height(Length::Fill),
     )
     .width(Length::FillPortion(3))
     .height(Length::Fill)
     .padding(18)
-    .style(|_| elevated_style(VIOLET))
+    .style(|_| elevated_style())
     .into()
+}
+
+fn short_date(date: &str) -> String {
+    let mut parts = date.split('-');
+    let _year = parts.next();
+    let month = parts.next().and_then(|value| value.parse::<u8>().ok());
+    let day = parts.next().and_then(|value| value.parse::<u8>().ok());
+    match (month, day) {
+        (Some(month), Some(day)) => format!("{month}/{day}"),
+        _ => "·".to_owned(),
+    }
 }
 
 fn allowance_panel<'a>(
@@ -346,19 +390,10 @@ fn allowance_panel<'a>(
             row![
                 kicker("ALLOWANCE", MINT),
                 Space::new().width(Length::Fill),
-                status_pill(
-                    if entitlement > 0.0 { "TRACKED" } else { "UNREPORTED" },
-                    if entitlement > 0.0 { MINT } else { MUTED },
-                ),
+                text("Monthly cap").size(10).color(MUTED),
             ]
             .align_y(Alignment::Center),
-            text(if entitlement > 0.0 {
-                format!("{percent:.0}% used")
-            } else {
-                "No cap reported".to_owned()
-            })
-            .size(30)
-            .color(TEXT),
+            text(format!("{percent:.0}% used")).size(30).color(TEXT),
             progress_bar(0.0..=1.0, fraction),
             row![
                 column![
@@ -374,28 +409,45 @@ fn allowance_panel<'a>(
                 .spacing(3),
             ],
             container(
-                text(if entitlement > 0.0 {
-                    format!(
-                        "{} of {} consumed",
-                        money(Some(used), false),
-                        money(Some(entitlement), false)
-                    )
-                } else {
-                    "GitHub did not report a monthly allowance.".to_owned()
-                })
+                text(format!(
+                    "{} of {} consumed",
+                    money(Some(used), false),
+                    money(Some(entitlement), false)
+                ))
                 .size(10)
                 .color(MUTED),
             )
             .width(Length::Fill)
             .padding(10)
-            .style(|_| glass_style(MINT)),
+            .style(|_| glass_style()),
         ]
         .spacing(14),
     )
     .width(Length::FillPortion(2))
     .height(Length::Fill)
     .padding(18)
-    .style(|_| elevated_style(MINT))
+    .style(|_| elevated_style())
+    .into()
+}
+
+fn allowance_unavailable<'a>() -> Element<'a, Message> {
+    container(
+        row![
+            column![
+                kicker("ALLOWANCE", MUTED),
+                text("Monthly cap unavailable").size(15).color(TEXT),
+            ]
+            .spacing(4),
+            Space::new().width(Length::Fill),
+            text("GitHub did not report an allowance for this plan.")
+                .size(11)
+                .color(MUTED),
+        ]
+        .align_y(Alignment::Center),
+    )
+    .width(Length::Fill)
+    .padding([13, 17])
+    .style(|_| elevated_style())
     .into()
 }
 
@@ -477,13 +529,13 @@ fn reset_text(epoch: Option<i64>) -> String {
 fn pace_label(value: Option<f64>) -> (String, Color) {
     match value {
         Some(credits) if credits >= 0.0 => {
-            (format!("{} BELOW PACE", money(Some(credits), false)), MINT)
+            (format!("{} below plan pace", money(Some(credits), false)), MINT)
         }
         Some(credits) => (
-            format!("{} ABOVE PACE", money(Some(credits.abs()), false)),
+            format!("+{} above plan pace", money(Some(credits.abs()), false)),
             AMBER,
         ),
-        None => ("LEARNING PACE".to_owned(), MUTED),
+        None => ("Building a pace baseline".to_owned(), MUTED),
     }
 }
 
@@ -492,16 +544,10 @@ fn metric_card<'a>(
     value: String,
     detail: String,
     accent: Color,
-    glyph: &'static str,
 ) -> Element<'a, Message> {
     container(
         column![
-            row![
-                kicker(title, accent),
-                Space::new().width(Length::Fill),
-                text(glyph).size(20).color(accent),
-            ]
-            .align_y(Alignment::Center),
+            kicker(title, accent),
             text(value).size(29).color(TEXT),
             text(detail).size(11).color(MUTED),
         ]
@@ -509,7 +555,7 @@ fn metric_card<'a>(
     )
     .width(Length::FillPortion(1))
     .padding([15, 17])
-    .style(move |_| elevated_style(accent))
+    .style(|_| elevated_style())
     .into()
 }
 
@@ -588,29 +634,29 @@ fn hero_style() -> container::Style {
     }
 }
 
-fn elevated_style(accent: Color) -> container::Style {
+fn elevated_style() -> container::Style {
     container::Style {
         background: Some(Background::Color(SURFACE)),
         border: Border {
-            color: Color { a: 0.42, ..accent },
+            color: Color { a: 0.72, ..BORDER },
             width: 1.0,
             radius: 17.0.into(),
         },
         shadow: Shadow {
-            color: Color { a: 0.12, ..accent },
+            color: Color::from_rgba(0.0, 0.0, 0.0, 0.26),
             offset: Vector::new(0.0, 8.0),
-            blur_radius: 22.0,
+            blur_radius: 18.0,
         },
         text_color: Some(TEXT),
         ..container::Style::default()
     }
 }
 
-fn glass_style(accent: Color) -> container::Style {
+fn glass_style() -> container::Style {
     container::Style {
         background: Some(Background::Color(SURFACE_HIGH)),
         border: Border {
-            color: Color { a: 0.25, ..accent },
+            color: Color { a: 0.66, ..BORDER },
             width: 1.0,
             radius: 13.0.into(),
         },
@@ -662,7 +708,6 @@ struct Metrics {
     delta_1h: Option<f64>,
     delta_today: Option<f64>,
     delta_7d: Option<f64>,
-    delta_30d: Option<f64>,
     rate_per_hour: Option<f64>,
     average_per_day: Option<f64>,
     projected_at_reset: Option<f64>,
@@ -672,6 +717,6 @@ struct Metrics {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 struct DailyUsage {
-    label: String,
+    date: String,
     credits: f64,
 }
