@@ -1,13 +1,13 @@
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=AI Credit Pulse
-GenericName=AI credit usage monitor
-Comment=Monitor GitHub Copilot AI credit usage
+Name=Copilot Usage
+GenericName=Copilot usage monitor
+Comment=Show GitHub Copilot credit cost and history
 Exec="@EXEC@"
 Icon=gh-ai-credit-pulse
 Terminal=false
 Categories=Development;Utility;
-Keywords=GitHub;Copilot;AI;Credits;Usage;
+Keywords=GitHub;Copilot;Credits;Usage;Cost;
 StartupNotify=true
 StartupWMClass=gh-ai-credit-pulse-gui

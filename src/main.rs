@@ -11,16 +11,19 @@ use std::time::Duration;
 
 const BACKGROUND: Color = Color::from_rgb(0.027, 0.035, 0.063);
 const SURFACE: Color = Color::from_rgb(0.059, 0.078, 0.125);
-const SURFACE_HIGH: Color = Color::from_rgb(0.082, 0.102, 0.165);
-const HERO: Color = Color::from_rgb(0.094, 0.063, 0.180);
+const SURFACE_HIGH: Color = Color::from_rgb(0.075, 0.094, 0.145);
+const HERO: Color = SURFACE;
 const BORDER: Color = Color::from_rgb(0.157, 0.196, 0.294);
 const TEXT: Color = Color::from_rgb(0.973, 0.980, 1.0);
 const MUTED: Color = Color::from_rgb(0.620, 0.663, 0.753);
 const VIOLET: Color = Color::from_rgb(0.545, 0.361, 0.965);
-const CYAN: Color = Color::from_rgb(0.133, 0.827, 0.933);
 const MINT: Color = Color::from_rgb(0.204, 0.827, 0.600);
 const AMBER: Color = Color::from_rgb(0.984, 0.749, 0.141);
 const ERROR: Color = Color::from_rgb(0.984, 0.443, 0.522);
+const CARD_RADIUS: f32 = 16.0;
+const INSET_RADIUS: f32 = 12.0;
+const CONTROL_RADIUS: f32 = 10.0;
+const BAR_RADIUS: f32 = 5.0;
 const APPLICATION_ID: &str = "io.github.probably_undefined.GhAiCreditPulse";
 
 fn main() -> iced::Result {
@@ -30,7 +33,7 @@ fn main() -> iced::Result {
     }
 
     iced::application(Dashboard::boot, Dashboard::update, Dashboard::view)
-        .title("GitHub AI Credit Pulse")
+        .title("Copilot Usage")
         .theme(app_theme)
         .window(window::Settings {
             size: Size::new(1120.0, 760.0),
@@ -117,21 +120,11 @@ impl Dashboard {
             status_pill("● LIVE", MINT)
         };
 
-        let brand = row![
-            container(text("✦").size(21).color(TEXT))
-                .width(Length::Fixed(44.0))
-                .height(Length::Fixed(44.0))
-                .align_x(Alignment::Center)
-                .align_y(Alignment::Center)
-                .style(|_| accent_mark_style()),
-            column![
-                text("AI CREDIT PULSE").size(18).color(TEXT),
-                text("GITHUB COPILOT USAGE").size(10).color(MUTED),
-            ]
-            .spacing(3),
+        let brand = column![
+            text("COPILOT USAGE").size(18).color(TEXT),
+            text("LOCAL COST HISTORY").size(10).color(MUTED),
         ]
-        .spacing(12)
-        .align_y(Alignment::Center);
+        .spacing(3);
 
         let header = row![
             brand,
@@ -139,7 +132,8 @@ impl Dashboard {
             status,
             button(text(if self.refreshing { "Syncing…" } else { "↻  Refresh" }).size(12))
                 .on_press(Message::Refresh)
-                .padding([9, 14]),
+                .padding([9, 14])
+                .style(refresh_button_style),
         ]
         .spacing(12)
         .align_y(Alignment::Center);
@@ -152,7 +146,7 @@ impl Dashboard {
                     .size(13)
                     .color(MUTED),
                 dot(),
-                text("100 AIC = $1.00").size(13).color(CYAN),
+                text("100 AIC = $1.00").size(13).color(MUTED),
             ]
             .spacing(9)
             .align_y(Alignment::Center),
@@ -278,11 +272,11 @@ fn usage_chart<'a>(
         for (index, day) in visible.iter().enumerate() {
             let intensity = (day.credits / max_credits).clamp(0.0, 1.0) as f32;
             let height = if day.credits > 0.0 {
-                10.0 + intensity * 152.0
+                10.0 + intensity * 190.0
             } else {
                 3.0
             };
-            let color = if index + 1 == visible.len() { CYAN } else { VIOLET };
+            let color = VIOLET;
             let label = if index + 1 == visible.len() {
                 "Today".to_owned()
             } else if index % 2 == 0 {
@@ -309,7 +303,7 @@ fn usage_chart<'a>(
         for (index, credits) in buckets.iter().enumerate() {
             let intensity = (*credits / maximum).clamp(0.0, 1.0) as f32;
             let height = if *credits > 0.0 {
-                8.0 + intensity * 144.0
+                8.0 + intensity * 182.0
             } else {
                 3.0
             };
@@ -324,7 +318,7 @@ fn usage_chart<'a>(
             bars = bars.push(chart_bar(
                 height,
                 intensity,
-                if last { CYAN } else { VIOLET },
+                VIOLET,
                 label,
                 last,
             ));
@@ -365,7 +359,7 @@ fn usage_chart<'a>(
                 ]
                 .spacing(3),
                 Space::new().width(Length::Fill),
-                text(summary).size(16).color(MUTED),
+                text(summary).size(13).color(MUTED),
             ]
             .align_y(Alignment::Center),
             bars,
@@ -402,7 +396,7 @@ fn chart_bar<'a>(
     column![
         Space::new().height(Length::Fill),
         bar,
-        text(label).size(9).color(if current { CYAN } else { MUTED }),
+        text(label).size(9).color(if current { VIOLET } else { MUTED }),
     ]
     .width(Length::FillPortion(1))
     .height(Length::Fill)
@@ -609,11 +603,17 @@ fn status_pill<'a>(value: &str, color: Color) -> Element<'a, Message> {
             border: Border {
                 color: Color { a: 0.38, ..color },
                 width: 1.0,
-                radius: 14.0.into(),
+                radius: CONTROL_RADIUS.into(),
             },
             ..container::Style::default()
         })
         .into()
+}
+
+fn refresh_button_style(theme: &Theme, status: button::Status) -> button::Style {
+    let mut style = button::secondary(theme, status);
+    style.border.radius = CONTROL_RADIUS.into();
+    style
 }
 
 fn error_banner<'a>(message: &'a str) -> Element<'a, Message> {
@@ -625,43 +625,25 @@ fn error_banner<'a>(message: &'a str) -> Element<'a, Message> {
             border: Border {
                 color: Color { a: 0.55, ..ERROR },
                 width: 1.0,
-                radius: 10.0.into(),
+                radius: CONTROL_RADIUS.into(),
             },
             ..container::Style::default()
         })
         .into()
 }
 
-fn accent_mark_style() -> container::Style {
-    container::Style {
-        background: Some(Background::Color(VIOLET)),
-        border: Border {
-            color: Color { a: 0.70, ..CYAN },
-            width: 1.0,
-            radius: 13.0.into(),
-        },
-        shadow: Shadow {
-            color: Color { a: 0.32, ..VIOLET },
-            offset: Vector::new(0.0, 5.0),
-            blur_radius: 18.0,
-        },
-        text_color: Some(TEXT),
-        ..container::Style::default()
-    }
-}
-
 fn hero_style() -> container::Style {
     container::Style {
         background: Some(Background::Color(HERO)),
         border: Border {
-            color: Color { a: 0.62, ..VIOLET },
+            color: Color { a: 0.72, ..BORDER },
             width: 1.0,
-            radius: 22.0.into(),
+            radius: CARD_RADIUS.into(),
         },
         shadow: Shadow {
-            color: Color { a: 0.25, ..VIOLET },
-            offset: Vector::new(0.0, 12.0),
-            blur_radius: 32.0,
+            color: Color::from_rgba(0.0, 0.0, 0.0, 0.26),
+            offset: Vector::new(0.0, 8.0),
+            blur_radius: 18.0,
         },
         text_color: Some(TEXT),
         ..container::Style::default()
@@ -674,7 +656,7 @@ fn elevated_style() -> container::Style {
         border: Border {
             color: Color { a: 0.72, ..BORDER },
             width: 1.0,
-            radius: 17.0.into(),
+            radius: CARD_RADIUS.into(),
         },
         shadow: Shadow {
             color: Color::from_rgba(0.0, 0.0, 0.0, 0.26),
@@ -692,7 +674,7 @@ fn glass_style() -> container::Style {
         border: Border {
             color: Color { a: 0.66, ..BORDER },
             width: 1.0,
-            radius: 13.0.into(),
+            radius: INSET_RADIUS.into(),
         },
         text_color: Some(TEXT),
         ..container::Style::default()
@@ -703,14 +685,14 @@ fn bar_style(color: Color, alpha: f32) -> container::Style {
     container::Style {
         background: Some(Background::Color(Color { a: alpha, ..color })),
         border: Border {
-            color: Color { a: 0.65, ..color },
+            color: Color { a: 0.52, ..color },
             width: 1.0,
-            radius: 7.0.into(),
+            radius: BAR_RADIUS.into(),
         },
         shadow: Shadow {
-            color: Color { a: 0.18, ..color },
-            offset: Vector::new(0.0, 4.0),
-            blur_radius: 12.0,
+            color: Color::from_rgba(0.0, 0.0, 0.0, 0.22),
+            offset: Vector::new(0.0, 3.0),
+            blur_radius: 8.0,
         },
         ..container::Style::default()
     }

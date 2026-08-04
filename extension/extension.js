@@ -12,7 +12,7 @@ const POLL_SECONDS = 30;
 const CreditIndicator = GObject.registerClass(
 class CreditIndicator extends PanelMenu.Button {
     _init() {
-        super._init(0.0, 'GitHub AI Credit Pulse', false);
+        super._init(0.0, 'GitHub Copilot Usage', false);
 
         this._pollSource = 0;
         this._closeSource = 0;
@@ -76,14 +76,9 @@ class CreditIndicator extends PanelMenu.Button {
         contentItem.add_child(dashboard);
 
         const header = new St.BoxLayout({style_class: 'credit-pulse-header'});
-        header.add_child(new St.Label({
-            text: '✦',
-            y_align: Clutter.ActorAlign.CENTER,
-            style_class: 'credit-pulse-brand-mark',
-        }));
         const titleBox = new St.BoxLayout({vertical: true, x_expand: true});
         titleBox.add_child(new St.Label({
-            text: 'AI CREDIT PULSE',
+            text: 'COPILOT USAGE',
             style_class: 'credit-pulse-title',
         }));
         this._subtitle = new St.Label({
