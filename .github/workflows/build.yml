@@ -101,6 +101,16 @@ jobs:
         with:
           subject-path: release/gh-ai-credit-pulse-linux-x86_64.tar.gz
 
+      - name: Test consumer verification policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh attestation verify release/gh-ai-credit-pulse-linux-x86_64.tar.gz \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/build.yml" \
+            --source-ref "refs/heads/main" \
+            --deny-self-hosted-runners
+
       - name: Publish immutable release
         env:
           GH_TOKEN: ${{ github.token }}
