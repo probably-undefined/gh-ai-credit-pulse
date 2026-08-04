@@ -137,7 +137,8 @@ download_verified_bundle() {
 
     while IFS= read -r entry; do
         if [[ -z "${entry}" || "${entry}" == /* || "${entry}" == *'/../'* ||
-              "${entry}" == '../'* || "${entry}" != gh-ai-credit-pulse/* ]]; then
+              "${entry}" == *'/..' || "${entry}" == '../'* ||
+              "${entry}" != gh-ai-credit-pulse/* ]]; then
             printf 'Unsafe archive path: %s\n' "${entry}" >&2
             exit 1
         fi
