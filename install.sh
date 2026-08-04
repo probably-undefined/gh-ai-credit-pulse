@@ -50,7 +50,7 @@ require_command() {
 }
 
 download_verified_bundle() {
-    for command_name in curl gh sha256sum tar /usr/bin/python3; do
+    for command_name in gh grep sha256sum tar; do
         require_command "${command_name}"
     done
     if ! gh attestation --help >/dev/null 2>&1; then
@@ -61,83 +61,44 @@ download_verified_bundle() {
     fi
 
     # GitHub's /releases/latest endpoint intentionally excludes pre-releases.
-    # Query recent published releases and select the newest canonical build whose
-    # immutable tag, archive name, and checksum all bind to the same commit.
-    release_json=""
-    if ! release_json="$(gh api "repos/${repo}/releases?per_page=30" 2>/dev/null)"; then
+    # Let gh perform the JSON parsing, then validate the tag and exact asset pair
+    # in Bash. This keeps the bootstrap path independent of Python.
+    release_tags=""
+    if ! release_tags="$(
+        gh release list --repo "${repo}" --limit 30 \
+            --json tagName,isDraft,publishedAt \
+            --jq 'sort_by(.publishedAt) | reverse | .[] | select(.isDraft == false) | .tagName' \
+            2>/dev/null
+    )"; then
         printf '%s\n' \
             'No published gh-ai-credit-pulse release is currently available.' \
             'Installation stopped safely; try again after the release workflow finishes.' >&2
         exit 1
     fi
 
-    parsed_info=""
-    if ! parsed_info="$(
-        printf '%s' "${release_json}" |
-            /usr/bin/python3 -c '
-import json
-import re
-import sys
+    release_tag=""
+    bundle_name=""
+    while IFS= read -r candidate_tag; do
+        [[ "${candidate_tag}" =~ ^build-([0-9a-f]{12})$ ]] || continue
+        candidate_sha="${BASH_REMATCH[1]}"
+        candidate_bundle="gh-ai-credit-pulse-linux-x86_64-${candidate_sha}.tar.gz"
+        assets="$(
+            gh release view "${candidate_tag}" --repo "${repo}" \
+                --json assets --jq '.assets[].name' 2>/dev/null || true
+        )"
+        [[ "$(grep -Fxc -- "${candidate_bundle}" <<<"${assets}" || true)" == 1 ]] || continue
+        [[ "$(grep -Fxc -- "${candidate_bundle}.sha256" <<<"${assets}" || true)" == 1 ]] || continue
+        release_tag="${candidate_tag}"
+        bundle_name="${candidate_bundle}"
+        break
+    done <<<"${release_tags}"
 
-releases = json.load(sys.stdin)
-tag_pattern = re.compile(r"^build-([0-9a-f]{12})$")
-asset_pattern = re.compile(r"^gh-ai-credit-pulse-linux-x86_64-([0-9a-f]{12})\.tar\.gz$")
-
-for release in sorted(
-    releases,
-    key=lambda item: item.get("published_at") or item.get("created_at") or "",
-    reverse=True,
-):
-    if release.get("draft"):
-        continue
-    tag_match = tag_pattern.fullmatch(release.get("tag_name", ""))
-    if not tag_match:
-        continue
-
-    archives = [
-        asset for asset in release.get("assets", [])
-        if asset_pattern.fullmatch(asset.get("name", ""))
-    ]
-    if len(archives) != 1:
-        continue
-
-    archive = archives[0]
-    archive_match = asset_pattern.fullmatch(archive["name"])
-    if archive_match.group(1) != tag_match.group(1):
-        continue
-
-    checksums = [
-        asset for asset in release.get("assets", [])
-        if asset.get("name") == archive["name"] + ".sha256"
-    ]
-    if len(checksums) != 1:
-        continue
-
-    print(release["tag_name"])
-    print(archive["name"])
-    print(archive["browser_download_url"])
-    print(checksums[0]["browser_download_url"])
-    break
-else:
-    raise SystemExit("No valid published build release found")
-'
-    )"; then
+    if [[ -z "${release_tag}" || -z "${bundle_name}" ]]; then
         printf '%s\n' \
             'GitHub returned no valid published build release.' \
             'Installation stopped safely; no files were changed.' >&2
         exit 1
     fi
-
-    mapfile -t release_info <<<"${parsed_info}"
-    if ((${#release_info[@]} != 4)); then
-        printf 'GitHub returned invalid release metadata.\n' >&2
-        exit 1
-    fi
-
-    release_tag="${release_info[0]}"
-    bundle_name="${release_info[1]}"
-    archive_url="${release_info[2]}"
-    checksum_url="${release_info[3]}"
 
     if [[ ! "${release_tag}" =~ ^build-([0-9a-f]{12})$ ]]; then
         printf 'GitHub returned an unexpected release tag: %s\n' "${release_tag}" >&2
@@ -163,10 +124,8 @@ else:
     trap cleanup EXIT
 
     printf 'Downloading verified release %s from %s…\n' "${release_tag}" "${repo}"
-    curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
-        "${archive_url}" -o "${archive}"
-    curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
-        "${checksum_url}" -o "${checksum}"
+    gh release download "${release_tag}" --repo "${repo}" --dir "${download_dir}" \
+        --pattern "${bundle_name}" --pattern "${bundle_name}.sha256"
 
     (cd "${download_dir}" && sha256sum --check --strict "${bundle_name}.sha256")
     gh attestation verify "${archive}" \
@@ -176,23 +135,21 @@ else:
         --deny-self-hosted-runners >/dev/null
     printf 'Checksum and GitHub build provenance verified.\n'
 
-    /usr/bin/python3 - "${archive}" "${download_dir}" <<'PY'
-import pathlib
-import sys
-import tarfile
-
-archive, destination = sys.argv[1:]
-with tarfile.open(archive, "r:gz") as bundle:
-    for member in bundle.getmembers():
-        path = pathlib.PurePosixPath(member.name)
-        if path.is_absolute() or ".." in path.parts or not path.parts:
-            raise SystemExit(f"Unsafe archive path: {member.name}")
-        if path.parts[0] != "gh-ai-credit-pulse":
-            raise SystemExit(f"Unexpected archive root: {member.name}")
-        if not (member.isfile() or member.isdir()):
-            raise SystemExit(f"Unsupported archive entry: {member.name}")
-    bundle.extractall(destination)
-PY
+    while IFS= read -r entry; do
+        if [[ -z "${entry}" || "${entry}" == /* || "${entry}" == *'/../'* ||
+              "${entry}" == '../'* || "${entry}" != gh-ai-credit-pulse/* ]]; then
+            printf 'Unsafe archive path: %s\n' "${entry}" >&2
+            exit 1
+        fi
+    done < <(tar -tzf "${archive}")
+    while IFS= read -r listing; do
+        entry_type="${listing:0:1}"
+        if [[ "${entry_type}" != '-' && "${entry_type}" != 'd' ]]; then
+            printf 'Unsupported archive entry type: %s\n' "${entry_type}" >&2
+            exit 1
+        fi
+    done < <(tar -tvzf "${archive}")
+    tar -xzf "${archive}" --no-same-owner --no-same-permissions -C "${download_dir}"
 
     child_args=(--from-bundle)
     [[ "${enable_extension}" == false ]] && child_args+=(--no-extension)
@@ -207,17 +164,15 @@ if [[ "${from_bundle}" == false ]]; then
 fi
 
 if [[ ! -x "${project_dir}/gh-ai-credit-pulse-gui" ||
+      ! -x "${project_dir}/gh-ai-credit-pulse-collector" ||
       ! -f "${project_dir}/assets/io.github.probably_undefined.GhAiCreditPulse.desktop" ||
       ! -f "${project_dir}/assets/gh-ai-credit-pulse.png" ||
-      ! -f "${project_dir}/extension/extension.js" ||
-      ! -f "${project_dir}/scripts/gh_ai_credits.py" ]]; then
+      ! -f "${project_dir}/extension/extension.js" ]]; then
     printf 'Verified release bundle is incomplete; refusing to install.\n' >&2
     exit 1
 fi
 
-for command_name in gh /usr/bin/python3; do
-    require_command "${command_name}"
-done
+require_command gh
 
 if [[ -e "${target_dir}" ]]; then
     backup_dir="${target_dir}.backup.$(date +%Y%m%d-%H%M%S)"
@@ -225,12 +180,14 @@ if [[ -e "${target_dir}" ]]; then
     printf 'Existing installation backed up to %s\n' "${backup_dir}"
 fi
 
-install -d -- "${target_dir}/assets" "${target_dir}/scripts" \
-    "${applications_dir}" "${icons_dir}" "${bin_dir}"
+install -d -- "${target_dir}/assets" "${applications_dir}" "${icons_dir}" "${bin_dir}"
 install -m 0755 -- "${project_dir}/gh-ai-credit-pulse-gui" "${target_dir}/gh-ai-credit-pulse-gui"
+install -m 0755 -- "${project_dir}/gh-ai-credit-pulse-collector" \
+    "${target_dir}/gh-ai-credit-pulse-collector"
 install -m 0755 -- "${project_dir}/install.sh" "${target_dir}/install.sh"
 install -m 0755 -- "${project_dir}/gh-ai-credit-pulse" "${bin_dir}/gh-ai-credit-pulse"
-install -m 0755 -- "${project_dir}/scripts/gh_ai_credits.py" "${target_dir}/scripts/"
+rm -f -- "${target_dir}/scripts/gh_ai_credits.py"
+rmdir -- "${target_dir}/scripts" 2>/dev/null || true
 install -m 0644 -- "${project_dir}/assets/gh-ai-credit-pulse.png" \
     "${target_dir}/assets/gh-ai-credit-pulse.png"
 install -m 0644 -- "${project_dir}/VERSION" "${target_dir}/VERSION"
@@ -251,11 +208,12 @@ if [[ "${enable_extension}" == true ]]; then
     extension_was_installed=false
     [[ -f "${extension_dir}/extension.js" ]] && extension_was_installed=true
 
-    install -d -- "${extension_dir}/scripts"
+    install -d -- "${extension_dir}"
     install -m 0644 -- "${project_dir}/extension/extension.js" "${extension_dir}/extension.js"
     install -m 0644 -- "${project_dir}/extension/metadata.json" "${extension_dir}/metadata.json"
     install -m 0644 -- "${project_dir}/extension/stylesheet.css" "${extension_dir}/stylesheet.css"
-    install -m 0755 -- "${project_dir}/scripts/gh_ai_credits.py" "${extension_dir}/scripts/"
+    rm -f -- "${extension_dir}/scripts/gh_ai_credits.py"
+    rmdir -- "${extension_dir}/scripts" 2>/dev/null || true
 
     if [[ "${extension_was_installed}" == true ]]; then
         # GNOME 42 caches extension modules for the lifetime of the Wayland
