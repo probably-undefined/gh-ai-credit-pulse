@@ -255,6 +255,8 @@ if [[ "${enable_extension}" == true ]]; then
     install -m 0755 -- "${project_dir}/scripts/gh_ai_credits.py" "${extension_dir}/scripts/"
 
     gnome-extensions disable "${uuid}" >/dev/null 2>&1 || true
+    # Let GNOME Shell fully unload the old JavaScript and stylesheet before reload.
+    sleep 1
     if gnome-extensions enable "${uuid}"; then
         printf 'Enabled GNOME extension %s\n' "${uuid}"
     else
