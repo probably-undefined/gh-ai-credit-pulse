@@ -18,7 +18,12 @@ class CreditIndicator extends PanelMenu.Button {
         this._closeSource = 0;
         this._refreshing = false;
         this._cancellable = new Gio.Cancellable();
-        this._collector = GLib.build_filenamev([Me.path, 'scripts', 'gh_ai_credits.py']);
+        this._collector = GLib.getenv('GH_AI_CREDIT_PULSE_COLLECTOR') ||
+            GLib.build_filenamev([
+                GLib.get_user_data_dir(),
+                'gh-ai-credit-pulse',
+                'gh-ai-credit-pulse-collector',
+            ]);
         this.menu.box.add_style_class_name('credit-pulse-menu-content');
         this.menu.box.set_style(
             'padding: 0; background-color: transparent; border: none; box-shadow: none;'
@@ -228,7 +233,7 @@ class CreditIndicator extends PanelMenu.Button {
         let process;
         try {
             process = Gio.Subprocess.new(
-                ['/usr/bin/python3', this._collector, fetch ? 'sample' : 'dashboard', '--window', '24h'],
+                [this._collector, fetch ? 'sample' : 'dashboard', '--window', '24h'],
                 Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
             );
         } catch (error) {
