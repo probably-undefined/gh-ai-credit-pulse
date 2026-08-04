@@ -5,6 +5,7 @@ use iced::{
 use gh_ai_credit_pulse::collector::{
     Collector, Current, DailyUsage, DashboardData, Metrics, UsageSample, Window, default_db_path,
 };
+use std::env;
 use std::time::Duration;
 
 const BACKGROUND: Color = Color::from_rgb(0.027, 0.035, 0.063);
