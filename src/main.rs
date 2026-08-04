@@ -1,12 +1,10 @@
 use iced::widget::{button, column, container, progress_bar, row, text, Row, Space};
 use iced::{
-    window, Alignment, Background, Border, Color, Element, Length, Shadow, Size, Subscription, Task,
-    Theme, Vector,
+    window, Alignment, Background, Border, Color, Element, Length, Size, Subscription, Task, Theme,
 };
-use serde::Deserialize;
-use std::env;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use gh_ai_credit_pulse::collector::{
+    Collector, Current, DailyUsage, DashboardData, Metrics, UsageSample, Window, default_db_path,
+};
 use std::time::Duration;
 
 const BACKGROUND: Color = Color::from_rgb(0.027, 0.035, 0.063);
@@ -474,40 +472,11 @@ fn load_dashboard() -> Task<Message> {
 }
 
 fn run_collector() -> Result<DashboardData, String> {
-    let collector = collector_path().ok_or_else(|| "Could not locate gh_ai_credits.py".to_owned())?;
-    let python = env::var("GH_AI_CREDIT_PULSE_PYTHON").unwrap_or_else(|_| {
-        if cfg!(windows) {
-            "python".to_owned()
-        } else {
-            "/usr/bin/python3".to_owned()
-        }
-    });
-    let output = Command::new(&python)
-        .arg(&collector)
-        .args(["sample", "--window", "24h"])
-        .output()
-        .map_err(|error| format!("Could not run {python}: {error}"))?;
-
-    if output.stdout.is_empty() {
-        return Err(String::from_utf8_lossy(&output.stderr).trim().to_owned());
-    }
-    serde_json::from_slice(&output.stdout)
-        .map_err(|error| format!("Invalid collector response: {error}"))
-}
-
-fn collector_path() -> Option<PathBuf> {
-    if let Some(path) = env::var_os("GH_AI_CREDIT_PULSE_COLLECTOR").map(PathBuf::from) {
-        return path.is_file().then_some(path);
-    }
-    let executable = env::current_exe().ok()?;
-    let directory = executable.parent()?;
-    [
-        directory.join("scripts/gh_ai_credits.py"),
-        directory.join("../scripts/gh_ai_credits.py"),
-        directory.join("../../scripts/gh_ai_credits.py"),
-    ]
-    .into_iter()
-    .find(|path| Path::new(path).is_file())
+    Collector::open(default_db_path())
+        .and_then(|collector| {
+            collector.sample(Window::OneDay, Duration::from_secs(20), 180)
+        })
+        .map_err(|error| error.to_string())
 }
 
 fn money(value: Option<f64>, signed: bool) -> String {
@@ -640,11 +609,6 @@ fn hero_style() -> container::Style {
             width: 1.0,
             radius: CARD_RADIUS.into(),
         },
-        shadow: Shadow {
-            color: Color::from_rgba(0.0, 0.0, 0.0, 0.26),
-            offset: Vector::new(0.0, 8.0),
-            blur_radius: 18.0,
-        },
         text_color: Some(TEXT),
         ..container::Style::default()
     }
@@ -657,11 +621,6 @@ fn elevated_style() -> container::Style {
             color: Color { a: 0.72, ..BORDER },
             width: 1.0,
             radius: CARD_RADIUS.into(),
-        },
-        shadow: Shadow {
-            color: Color::from_rgba(0.0, 0.0, 0.0, 0.26),
-            offset: Vector::new(0.0, 8.0),
-            blur_radius: 18.0,
         },
         text_color: Some(TEXT),
         ..container::Style::default()
@@ -689,56 +648,6 @@ fn bar_style(color: Color, alpha: f32) -> container::Style {
             width: 1.0,
             radius: BAR_RADIUS.into(),
         },
-        shadow: Shadow {
-            color: Color::from_rgba(0.0, 0.0, 0.0, 0.22),
-            offset: Vector::new(0.0, 3.0),
-            blur_radius: 8.0,
-        },
         ..container::Style::default()
     }
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
-struct DashboardData {
-    error: Option<String>,
-    sample_count: Option<u64>,
-    current: Current,
-    metrics: Metrics,
-    daily: Vec<DailyUsage>,
-    series: Vec<UsageSample>,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
-struct Current {
-    credits_used: Option<f64>,
-    entitlement: Option<f64>,
-    remaining: Option<f64>,
-    reset_at: Option<i64>,
-    plan: Option<String>,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
-struct Metrics {
-    delta_1h: Option<f64>,
-    delta_today: Option<f64>,
-    rate_per_hour: Option<f64>,
-    average_per_day: Option<f64>,
-    projected_at_reset: Option<f64>,
-    pace_delta: Option<f64>,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
-struct DailyUsage {
-    date: String,
-    credits: f64,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
-struct UsageSample {
-    delta: f64,
 }
