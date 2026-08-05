@@ -28,6 +28,7 @@ jobs:
         run: |
           jq empty extension/metadata.json
           bash -n install.sh gh-ai-credit-pulse
+          bash tests/wrapper-cli.sh
 
       - name: Restore Rust build cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -58,6 +59,8 @@ jobs:
           cargo fmt --all -- --check
           cargo test --all-targets --locked
           cargo build --release --locked
+          target/release/gh-ai-credit-pulse --help >/dev/null
+          target/release/gh-ai-credit-pulse --version >/dev/null
 
       - name: Assemble deterministic release bundle
         if: >-

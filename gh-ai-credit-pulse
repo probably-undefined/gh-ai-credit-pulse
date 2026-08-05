@@ -3,29 +3,150 @@ set -euo pipefail
 
 data_home="${XDG_DATA_HOME:-${HOME}/.local/share}"
 install_dir="${data_home}/gh-ai-credit-pulse"
+state_home="${XDG_STATE_HOME:-${HOME}/.local/state}"
 
 # Desktop sessions often start before the interactive shell initializes PATH.
 # Keep GUI launches and self-updates able to find a user-installed GitHub CLI.
 export PATH="${HOME}/.local/bin:${HOME}/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/bin:/usr/local/bin:/usr/bin:/snap/bin:${PATH:-}"
 
+usage() {
+    cat <<'EOF'
+Usage: gh-ai-credit-pulse [COMMAND] [OPTIONS]
+
+Open the dashboard or inspect GitHub Copilot AI credit usage.
+
+Commands:
+  gui                     Open the Iced dashboard
+  doctor                  Check the installation without starting the GUI
+  sample [OPTIONS]        Fetch, persist, and print dashboard JSON
+  dashboard [OPTIONS]     Print dashboard JSON without fetching
+  export [OPTIONS]        Export normalized samples as CSV
+  collector [ARGS]        Invoke the headless collector directly
+  self-update             Install the newest verified release
+
+Options:
+  -h, --help              Print help
+  -V, --version           Print version
+      --self-update       Install the newest verified release
+
+Run a command with --help for its command-specific options.
+EOF
+}
+
+doctor() {
+    local failed=0
+    local database="${state_home}/gh-ai-credits/history.sqlite3"
+
+    ok() { printf '[ok]   %s\n' "$1"; }
+    info() { printf '[info] %s\n' "$1"; }
+    fail() {
+        printf '[fail] %s\n' "$1"
+        failed=1
+    }
+
+    printf 'gh-ai-credit-pulse doctor\n'
+
+    if [[ -r "${install_dir}/VERSION" ]]; then
+        ok "version $(tr -d '[:space:]' <"${install_dir}/VERSION")"
+    else
+        fail "version file missing: ${install_dir}/VERSION"
+    fi
+
+    if [[ -x "${install_dir}/gh-ai-credit-pulse-gui" ]]; then
+        ok "GUI binary: ${install_dir}/gh-ai-credit-pulse-gui"
+    else
+        fail "GUI binary missing or not executable: ${install_dir}/gh-ai-credit-pulse-gui"
+    fi
+
+    if [[ -x "${install_dir}/gh-ai-credit-pulse-collector" ]]; then
+        ok "collector binary: ${install_dir}/gh-ai-credit-pulse-collector"
+        if "${install_dir}/gh-ai-credit-pulse-collector" --help >/dev/null 2>&1; then
+            ok 'collector starts headlessly'
+        else
+            fail 'collector could not start headlessly'
+        fi
+    else
+        fail "collector binary missing or not executable: ${install_dir}/gh-ai-credit-pulse-collector"
+    fi
+
+    if command -v gh >/dev/null 2>&1; then
+        ok "GitHub CLI: $(command -v gh)"
+        if gh auth status >/dev/null 2>&1; then
+            ok 'GitHub CLI authentication'
+        else
+            fail 'GitHub CLI is not authenticated; run: gh auth login'
+        fi
+    else
+        fail 'GitHub CLI not found'
+    fi
+
+    if [[ -f "${database}" ]]; then
+        ok "history database: ${database}"
+    else
+        info "history database not created yet: ${database}"
+    fi
+
+    info "session type: ${XDG_SESSION_TYPE:-unknown}"
+    info "Wayland display: ${WAYLAND_DISPLAY:-not set}"
+    info "X11 display: ${DISPLAY:-not set}"
+    info "WGPU backend override: ${WGPU_BACKEND:-not set}"
+
+    return "${failed}"
+}
+
 case "${1:-}" in
+    '')
+        exec "${install_dir}/gh-ai-credit-pulse-gui"
+        ;;
+    gui)
+        shift
+        exec "${install_dir}/gh-ai-credit-pulse-gui" "$@"
+        ;;
+    -h|--help|help)
+        usage
+        exit 0
+        ;;
+    doctor|--doctor)
+        shift
+        if (($#)); then
+            printf 'doctor does not accept arguments: %s\n\n' "$*" >&2
+            usage >&2
+            exit 2
+        fi
+        doctor
+        ;;
     --self-update|self-update|update)
+        shift
+        if (($#)); then
+            printf 'self-update does not accept arguments: %s\n\n' "$*" >&2
+            usage >&2
+            exit 2
+        fi
         exec "${install_dir}/install.sh" --update
         ;;
     collector)
         shift
         exec "${install_dir}/gh-ai-credit-pulse-collector" "$@"
         ;;
-    sample|dashboard|export|--db)
+    sample|dashboard|export|--db|--db=*)
         exec "${install_dir}/gh-ai-credit-pulse-collector" "$@"
         ;;
-    --version|version)
+    -V|--version|version)
+        shift
+        if (($#)); then
+            printf 'version does not accept arguments: %s\n\n' "$*" >&2
+            usage >&2
+            exit 2
+        fi
         if [[ -x "${install_dir}/gh-ai-credit-pulse-gui" ]]; then
             exec "${install_dir}/gh-ai-credit-pulse-gui" --version
         fi
         printf 'gh-ai-credit-pulse %s\n' "$(tr -d '[:space:]' <"${install_dir}/VERSION")"
         exit 0
         ;;
+    *)
+        printf 'Unknown command or option: %s\n\n' "$1" >&2
+        usage >&2
+        exit 2
+        ;;
 esac
-
-exec "${install_dir}/gh-ai-credit-pulse-gui" "$@"

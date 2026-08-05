@@ -64,12 +64,18 @@ gh api /copilot_internal/user \
 
 ```bash
 gh-ai-credit-pulse                 # open the Iced dashboard
+gh-ai-credit-pulse --help
+gh-ai-credit-pulse doctor          # headless installation diagnostics
 gh-ai-credit-pulse --version
 gh-ai-credit-pulse --self-update
 gh-ai-credit-pulse sample --window 24h | jq
 gh-ai-credit-pulse dashboard --window 7d | jq
 gh-ai-credit-pulse export --output gh-ai-credit-history.csv
 ```
+
+All CLI dispatch happens before the graphical backend is initialized. Help,
+diagnostics, version output, collector commands, and invalid arguments therefore
+work without a Vulkan, Wayland, or X11 presentation device.
 
 Normal polling is coordinated through SQLite: multiple dashboards and GNOME
 instances share a 25-second freshness window and one expiring fetch lease.

@@ -1,3 +1,4 @@
+use clap::Parser;
 use gh_ai_credit_pulse::collector::{
     Collector, Current, DailyUsage, DashboardData, Metrics, UsageSample, Window, default_db_path,
 };
@@ -5,7 +6,6 @@ use iced::widget::{Row, Space, button, column, container, progress_bar, row, tex
 use iced::{
     Alignment, Background, Border, Color, Element, Length, Size, Subscription, Task, Theme, window,
 };
-use std::env;
 use std::time::Duration;
 
 const BACKGROUND: Color = Color::from_rgb(0.027, 0.035, 0.063);
@@ -25,12 +25,20 @@ const CONTROL_RADIUS: f32 = 10.0;
 const BAR_RADIUS: f32 = 5.0;
 const APPLICATION_ID: &str = "io.github.probably_undefined.GhAiCreditPulse";
 
-fn main() -> iced::Result {
-    if env::args().any(|argument| argument == "--version" || argument == "version") {
-        println!("gh-ai-credit-pulse {}", env!("CARGO_PKG_VERSION"));
-        return Ok(());
-    }
+#[derive(Debug, Parser)]
+#[command(
+    name = "gh-ai-credit-pulse",
+    version,
+    about = "Open the GitHub Copilot AI credit dashboard"
+)]
+struct GuiArgs {}
 
+fn main() -> iced::Result {
+    GuiArgs::parse();
+    run_gui()
+}
+
+fn run_gui() -> iced::Result {
     iced::application(Dashboard::boot, Dashboard::update, Dashboard::view)
         .title("Copilot Usage")
         .theme(app_theme)
