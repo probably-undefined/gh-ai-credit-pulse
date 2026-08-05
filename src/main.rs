@@ -1,7 +1,7 @@
+use clap::Parser;
 use gh_ai_credit_pulse::collector::{
     Collector, Current, DailyUsage, DashboardData, Metrics, UsageSample, Window, default_db_path,
 };
-use clap::Parser;
 use iced::widget::{Row, Space, button, column, container, progress_bar, row, text};
 use iced::{
     Alignment, Background, Border, Color, Element, Length, Size, Subscription, Task, Theme, window,
