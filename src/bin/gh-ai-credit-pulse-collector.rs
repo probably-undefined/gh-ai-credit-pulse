@@ -32,6 +32,9 @@ enum Command {
         /// Bypass the freshness window while still respecting the cross-process lease.
         #[arg(long)]
         force: bool,
+        /// Suppress successful dashboard JSON; errors are still printed.
+        #[arg(long)]
+        quiet: bool,
     },
     /// Print dashboard JSON without fetching.
     Dashboard {
@@ -68,6 +71,7 @@ fn run(cli: Cli) -> Result<u8, Box<dyn std::error::Error>> {
             timeout,
             retention_days,
             force,
+            quiet,
         } => {
             let collector = Collector::open(&database)?;
             if !timeout.is_finite() || timeout <= 0.0 {
@@ -81,7 +85,9 @@ fn run(cli: Cli) -> Result<u8, Box<dyn std::error::Error>> {
                 collector.sample(window, timeout, retention_days)?
             };
             let code = if dashboard.error.is_some() { 2 } else { 0 };
-            emit(&dashboard)?;
+            if !quiet || dashboard.error.is_some() {
+                emit(&dashboard)?;
+            }
             Ok(code)
         }
         Command::Dashboard { window } => {

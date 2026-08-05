@@ -1,0 +1,13 @@
+[Unit]
+Description=Continuously sample GitHub Copilot usage
+Documentation=https://github.com/probably-undefined/gh-ai-credit-pulse
+
+[Timer]
+OnStartupSec=30s
+OnUnitActiveSec=2min
+AccuracySec=10s
+Persistent=true
+Unit=gh-ai-credit-pulse-sample.service
+
+[Install]
+WantedBy=timers.target

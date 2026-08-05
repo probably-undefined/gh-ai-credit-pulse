@@ -19,8 +19,10 @@ curl -fsSL https://raw.githubusercontent.com/probably-undefined/gh-ai-credit-pul
 The installer downloads the latest provenance-attested release bundle, verifies
 its SHA-256 checksum and GitHub build identity, installs the GNOME 42 extension,
 enables it, creates `~/.local/bin/gh-ai-credit-pulse`, and adds an **AI Credit
-Pulse** launcher with its own application icon. An up-to-date GitHub CLI with
-`gh attestation` support is required; verification fails closed.
+Pulse** launcher with its own application icon. It also enables a systemd user
+timer that samples every two minutes, including while the desktop is locked.
+An up-to-date GitHub CLI with `gh attestation` support is required;
+verification fails closed.
 
 If GNOME has not discovered a newly installed extension in the running Wayland
 session, log out and back in once, then run:
@@ -82,11 +84,31 @@ instances share a 25-second freshness window and one expiring fetch lease.
 `sample --force` bypasses the freshness window for an explicit refresh while
 still respecting the cross-process lease.
 
+## Background sampling
+
+The installer enables `gh-ai-credit-pulse-sample.timer` for the current user.
+The user service manager remains active while the GNOME desktop is locked, so
+usage history no longer depends on the top-bar extension's refresh loop. A
+persistent timer runs promptly after resume when the machine was suspended.
+
+```bash
+systemctl --user status gh-ai-credit-pulse-sample.timer
+systemctl --user list-timers gh-ai-credit-pulse-sample.timer
+journalctl --user -u gh-ai-credit-pulse-sample.service
+```
+
+Disable or re-enable background collection with:
+
+```bash
+systemctl --user disable --now gh-ai-credit-pulse-sample.timer
+systemctl --user enable --now gh-ai-credit-pulse-sample.timer
+```
+
 ## Architecture
 
 - `gh-ai-credit-pulse` is the Iced application.
 - `gh-ai-credit-pulse-collector` is the small headless CLI used by the GNOME
-  extension and shell wrapper.
+  extension, systemd sampler, and shell wrapper.
 - `src/collector/` contains the shared GitHub client, SQLite store, data model,
   and usage calculations.
 
