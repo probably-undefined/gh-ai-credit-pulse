@@ -29,6 +29,13 @@ jobs:
           jq empty extension/metadata.json
           bash -n install.sh gh-ai-credit-pulse
           bash tests/wrapper-cli.sh
+          unit_dir="$(mktemp -d)"
+          trap 'rm -rf "$unit_dir"' EXIT
+          sed 's|@COLLECTOR@|/bin/true|g' \
+            systemd/gh-ai-credit-pulse-sample.service.in > \
+            "$unit_dir/gh-ai-credit-pulse-sample.service"
+          cp systemd/gh-ai-credit-pulse-sample.timer "$unit_dir/"
+          systemd-analyze verify "$unit_dir"/*.service "$unit_dir"/*.timer
 
       - name: Restore Rust build cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -70,7 +77,7 @@ jobs:
         run: |
           asset="gh-ai-credit-pulse-linux-x86_64-${GITHUB_SHA:0:12}.tar.gz"
           root=staging/gh-ai-credit-pulse
-          install -d "$root/assets" "$root/extension" release
+          install -d "$root/assets" "$root/extension" "$root/systemd" release
           install -m 0755 target/release/gh-ai-credit-pulse "$root/gh-ai-credit-pulse-gui"
           install -m 0755 target/release/gh-ai-credit-pulse-collector \
             "$root/gh-ai-credit-pulse-collector"
@@ -78,6 +85,8 @@ jobs:
           install -m 0644 assets/io.github.probably_undefined.GhAiCreditPulse.desktop \
             assets/gh-ai-credit-pulse.png "$root/assets/"
           install -m 0644 extension/extension.js extension/metadata.json extension/stylesheet.css "$root/extension/"
+          install -m 0644 systemd/gh-ai-credit-pulse-sample.service.in \
+            systemd/gh-ai-credit-pulse-sample.timer "$root/systemd/"
           install -m 0644 VERSION README.md LICENSE "$root/"
           epoch="$(git log -1 --format=%ct)"
           tar --sort=name --mtime="@${epoch}" --owner=0 --group=0 --numeric-owner \

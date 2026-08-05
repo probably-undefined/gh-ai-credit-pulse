@@ -14,6 +14,9 @@ extension_dir="${data_home}/gnome-shell/extensions/${uuid}"
 applications_dir="${data_home}/applications"
 icons_dir="${data_home}/icons/hicolor/256x256/apps"
 bin_dir="${HOME}/.local/bin"
+systemd_user_dir="${XDG_CONFIG_HOME:-${HOME}/.config}/systemd/user"
+readonly sampler_service="gh-ai-credit-pulse-sample.service"
+readonly sampler_timer="gh-ai-credit-pulse-sample.timer"
 from_bundle=false
 enable_extension=true
 
@@ -158,6 +161,8 @@ if [[ ! -x "${project_dir}/gh-ai-credit-pulse-gui" ||
       ! -x "${project_dir}/gh-ai-credit-pulse-collector" ||
       ! -f "${project_dir}/assets/io.github.probably_undefined.GhAiCreditPulse.desktop" ||
       ! -f "${project_dir}/assets/gh-ai-credit-pulse.png" ||
+      ! -f "${project_dir}/systemd/${sampler_service}.in" ||
+      ! -f "${project_dir}/systemd/${sampler_timer}" ||
       ! -f "${project_dir}/extension/extension.js" ]]; then
     printf 'Verified release bundle is incomplete; refusing to install.\n' >&2
     exit 1
@@ -171,7 +176,8 @@ if [[ -e "${target_dir}" ]]; then
     printf 'Existing installation backed up to %s\n' "${backup_dir}"
 fi
 
-install -d -- "${target_dir}/assets" "${applications_dir}" "${icons_dir}" "${bin_dir}"
+install -d -- "${target_dir}/assets" "${target_dir}/systemd" \
+    "${applications_dir}" "${icons_dir}" "${bin_dir}" "${systemd_user_dir}"
 install -m 0755 -- "${project_dir}/gh-ai-credit-pulse-gui" "${target_dir}/gh-ai-credit-pulse-gui"
 install -m 0755 -- "${project_dir}/gh-ai-credit-pulse-collector" \
     "${target_dir}/gh-ai-credit-pulse-collector"
@@ -183,12 +189,36 @@ install -m 0644 -- "${project_dir}/assets/gh-ai-credit-pulse.png" \
     "${target_dir}/assets/gh-ai-credit-pulse.png"
 install -m 0644 -- "${project_dir}/VERSION" "${target_dir}/VERSION"
 install -m 0644 -- "${project_dir}/README.md" "${target_dir}/README.md"
+install -m 0644 -- "${project_dir}/systemd/${sampler_service}.in" \
+    "${target_dir}/systemd/${sampler_service}.in"
+install -m 0644 -- "${project_dir}/systemd/${sampler_timer}" \
+    "${target_dir}/systemd/${sampler_timer}"
 install -m 0644 -- "${project_dir}/assets/gh-ai-credit-pulse.png" \
     "${icons_dir}/gh-ai-credit-pulse.png"
 sed "s|@EXEC@|${bin_dir}/gh-ai-credit-pulse|g" \
     "${project_dir}/assets/io.github.probably_undefined.GhAiCreditPulse.desktop" > \
     "${applications_dir}/io.github.probably_undefined.GhAiCreditPulse.desktop"
 chmod 0644 "${applications_dir}/io.github.probably_undefined.GhAiCreditPulse.desktop"
+
+collector_path="${target_dir}/gh-ai-credit-pulse-collector"
+escaped_collector_path="$(printf '%s' "${collector_path}" | sed 's/[\\&|]/\\&/g')"
+sed "s|@COLLECTOR@|${escaped_collector_path}|g" \
+    "${project_dir}/systemd/${sampler_service}.in" > \
+    "${systemd_user_dir}/${sampler_service}"
+install -m 0644 -- "${project_dir}/systemd/${sampler_timer}" \
+    "${systemd_user_dir}/${sampler_timer}"
+
+if command -v systemctl >/dev/null 2>&1 &&
+   systemctl --user daemon-reload >/dev/null 2>&1; then
+    systemctl --user enable "${sampler_timer}" >/dev/null
+    systemctl --user restart "${sampler_timer}"
+    printf 'Enabled background sampling every two minutes.\n'
+else
+    printf '%s\n' \
+        'Installed the systemd user timer, but the user service manager is unavailable.' \
+        'Enable it after logging into the desktop:' \
+        "  systemctl --user enable --now ${sampler_timer}"
+fi
 
 if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database "${applications_dir}" >/dev/null 2>&1 || true

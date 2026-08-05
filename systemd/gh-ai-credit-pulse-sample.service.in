@@ -1,0 +1,19 @@
+[Unit]
+Description=Sample GitHub Copilot usage for AI Credit Pulse
+Documentation=https://github.com/probably-undefined/gh-ai-credit-pulse
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart="@COLLECTOR@" sample --window 24h --quiet
+TimeoutStartSec=30
+Nice=10
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
