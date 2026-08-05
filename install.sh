@@ -256,4 +256,4 @@ fi
 version="$(tr -d '[:space:]' <"${project_dir}/VERSION")"
 printf '\nInstalled gh-ai-credit-pulse %s\n' "${version}"
 printf 'Open dashboard: %s/gh-ai-credit-pulse\n' "${bin_dir}"
-printf 'Update later:   %s/gh-ai-credit-pulse --self-update\n' "${bin_dir}"
+printf 'Update later:   %s/gh-ai-credit-pulse upgrade\n' "${bin_dir}"
