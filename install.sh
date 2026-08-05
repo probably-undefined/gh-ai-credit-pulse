@@ -161,6 +161,7 @@ if [[ ! -x "${project_dir}/gh-ai-credit-pulse-gui" ||
       ! -x "${project_dir}/gh-ai-credit-pulse-collector" ||
       ! -f "${project_dir}/assets/io.github.probably_undefined.GhAiCreditPulse.desktop" ||
       ! -f "${project_dir}/assets/gh-ai-credit-pulse.png" ||
+      ! -f "${project_dir}/VERSION" ||
       ! -f "${project_dir}/systemd/${sampler_service}.in" ||
       ! -f "${project_dir}/systemd/${sampler_timer}" ||
       ! -f "${project_dir}/extension/extension.js" ]]; then

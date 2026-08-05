@@ -9,7 +9,8 @@ test_home="${test_root}/home"
 data_home="${test_root}/data"
 install_dir="${data_home}/gh-ai-credit-pulse"
 mkdir -p "${test_home}/.local/bin" "${install_dir}"
-cp "${project_dir}/VERSION" "${install_dir}/VERSION"
+# VERSION is a generated release artifact. Use a fixture for source-tree tests.
+printf 'test\n' >"${install_dir}/VERSION"
 
 cat >"${install_dir}/gh-ai-credit-pulse-gui" <<'EOF'
 #!/usr/bin/env bash

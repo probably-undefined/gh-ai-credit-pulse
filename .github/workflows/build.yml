@@ -70,10 +70,6 @@ jobs:
           target/release/gh-ai-credit-pulse --version >/dev/null
 
       - name: Assemble deterministic release bundle
-        if: >-
-          github.event_name == 'push' &&
-          github.ref == 'refs/heads/main' &&
-          github.repository == 'probably-undefined/gh-ai-credit-pulse'
         run: |
           asset="gh-ai-credit-pulse-linux-x86_64-${GITHUB_SHA:0:12}.tar.gz"
           root=staging/gh-ai-credit-pulse
@@ -87,7 +83,14 @@ jobs:
           install -m 0644 extension/extension.js extension/metadata.json extension/stylesheet.css "$root/extension/"
           install -m 0644 systemd/gh-ai-credit-pulse-sample.service.in \
             systemd/gh-ai-credit-pulse-sample.timer "$root/systemd/"
-          install -m 0644 VERSION README.md LICENSE "$root/"
+          version_output="$(target/release/gh-ai-credit-pulse --version)"
+          version="${version_output#gh-ai-credit-pulse }"
+          if [[ -z "$version" || "$version" == "$version_output" ]]; then
+            printf 'Could not resolve package version from binary: %s\n' "$version_output" >&2
+            exit 1
+          fi
+          printf '%s\n' "$version" >"$root/VERSION"
+          install -m 0644 README.md LICENSE "$root/"
           epoch="$(git log -1 --format=%ct)"
           tar --sort=name --mtime="@${epoch}" --owner=0 --group=0 --numeric-owner \
             -czf "release/${asset}" -C staging gh-ai-credit-pulse
