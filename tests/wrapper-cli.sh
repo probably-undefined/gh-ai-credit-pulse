@@ -66,10 +66,6 @@ assert_contains "${output}" 'gh-ai-credit-pulse doctor'
 assert_contains "${output}" '[ok]   collector starts headlessly'
 [[ "${output}" != *'GUI:'* ]]
 
-output="$(run_wrapper --doctor)"
-assert_contains "${output}" 'gh-ai-credit-pulse doctor'
-[[ "${output}" != *'GUI:'* ]]
-
 output="$(run_wrapper sample --window 24h)"
 [[ "${output}" == 'COLLECTOR:sample --window 24h' ]]
 
@@ -82,15 +78,17 @@ output="$(run_wrapper --db=/tmp/history.sqlite3 dashboard --window 7d)"
 output="$(run_wrapper --version)"
 [[ "${output}" == 'GUI:--version' ]]
 
-output="$(run_wrapper --self-update)"
+output="$(run_wrapper upgrade)"
 [[ "${output}" == 'INSTALL:--update' ]]
 
-set +e
-output="$(run_wrapper --not-a-real-option 2>&1)"
-status=$?
-set -e
-[[ "${status}" == 2 ]]
-assert_contains "${output}" 'Unknown command or option: --not-a-real-option'
-[[ "${output}" != *'GUI:'* ]]
+for invalid_arg in --doctor --self-update self-update update --not-a-real-option; do
+    set +e
+    output="$(run_wrapper "${invalid_arg}" 2>&1)"
+    status=$?
+    set -e
+    [[ "${status}" == 2 ]]
+    assert_contains "${output}" "Unknown command or option: ${invalid_arg}"
+    [[ "${output}" != *'GUI:'* ]]
+done
 
 printf 'wrapper CLI tests passed\n'

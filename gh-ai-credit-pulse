@@ -6,7 +6,7 @@ install_dir="${data_home}/gh-ai-credit-pulse"
 state_home="${XDG_STATE_HOME:-${HOME}/.local/state}"
 
 # Desktop sessions often start before the interactive shell initializes PATH.
-# Keep GUI launches and self-updates able to find a user-installed GitHub CLI.
+# Keep GUI launches and upgrades able to find a user-installed GitHub CLI.
 export PATH="${HOME}/.local/bin:${HOME}/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/bin:/usr/local/bin:/usr/bin:/snap/bin:${PATH:-}"
 
 usage() {
@@ -22,12 +22,11 @@ Commands:
   dashboard [OPTIONS]     Print dashboard JSON without fetching
   export [OPTIONS]        Export normalized samples as CSV
   collector [ARGS]        Invoke the headless collector directly
-  self-update             Install the newest verified release
+  upgrade                 Install the newest verified release
 
 Options:
   -h, --help              Print help
   -V, --version           Print version
-      --self-update       Install the newest verified release
 
 Run a command with --help for its command-specific options.
 EOF
@@ -106,7 +105,7 @@ case "${1:-}" in
         usage
         exit 0
         ;;
-    doctor|--doctor)
+    doctor)
         shift
         if (($#)); then
             printf 'doctor does not accept arguments: %s\n\n' "$*" >&2
@@ -115,10 +114,10 @@ case "${1:-}" in
         fi
         doctor
         ;;
-    --self-update|self-update|update)
+    upgrade)
         shift
         if (($#)); then
-            printf 'self-update does not accept arguments: %s\n\n' "$*" >&2
+            printf 'upgrade does not accept arguments: %s\n\n' "$*" >&2
             usage >&2
             exit 2
         fi
