@@ -126,6 +126,10 @@ GitHub Actions builds the Linux bundle on every push to `main` and updates one
 rolling `latest` pre-release consumed by the installer. Its asset name contains
 the source commit, while the attestation binds the complete source digest.
 
+`Cargo.toml` is the single source of truth for the application version. The
+release workflow reads it through the built binary and generates the bundle's
+`VERSION` file automatically.
+
 ## Supply-chain security
 
 - Dependencies are locked in `Cargo.lock` and release builds use `--locked`.
