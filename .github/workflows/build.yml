@@ -70,10 +70,6 @@ jobs:
           target/release/gh-ai-credit-pulse --version >/dev/null
 
       - name: Assemble deterministic release bundle
-        if: >-
-          github.event_name == 'push' &&
-          github.ref == 'refs/heads/main' &&
-          github.repository == 'probably-undefined/gh-ai-credit-pulse'
         run: |
           asset="gh-ai-credit-pulse-linux-x86_64-${GITHUB_SHA:0:12}.tar.gz"
           root=staging/gh-ai-credit-pulse
