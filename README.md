@@ -10,6 +10,10 @@ The GNOME top bar shows the current cost and hourly rate, for example
 
 The conversion is fixed at **100 AIC = $1.00**.
 
+The billing-cycle projection uses local working time: Monday through Friday,
+06:00–19:00. Weekends and time outside that window add no projected usage;
+historical totals and recent-rate metrics still reflect all recorded usage.
+
 ## Install
 
 ```bash
