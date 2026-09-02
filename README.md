@@ -17,6 +17,8 @@ The billing-cycle projection uses local working time: Monday through Friday,
 06:00–19:00. Weekends and time outside that window add no projected usage;
 historical totals and recent-rate metrics still reflect all recorded usage.
 
+![Copilot Usage dashboard with sample data](assets/screenshot.png)
+
 ## Visual language
 
 Both dashboards share one palette so a glance at the top bar and a glance at
@@ -29,6 +31,11 @@ the desktop window mean the same thing:
 - **Red** is reserved for errors and an allowance past 90%.
 
 Weekend bars are muted because the projection deliberately ignores them.
+
+The desktop dashboard bundles the [Inter](https://rsms.me/inter/) typeface
+(SIL Open Font License 1.1, see `assets/fonts/LICENSE-Inter.txt`) so it renders
+identically on every machine, and draws its chart and allowance gauge with
+Iced's canvas.
 
 ## Install
 

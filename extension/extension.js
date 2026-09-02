@@ -96,7 +96,7 @@ class CreditIndicator extends PanelMenu.Button {
         const header = new St.BoxLayout({style_class: 'credit-pulse-header'});
         const titleBox = new St.BoxLayout({vertical: true, x_expand: true});
         titleBox.add_child(new St.Label({
-            text: 'COPILOT USAGE',
+            text: 'Copilot Usage',
             style_class: 'credit-pulse-title',
         }));
         this._subtitle = new St.Label({
@@ -166,7 +166,7 @@ class CreditIndicator extends PanelMenu.Button {
         for (let index = 0; index < CHART_DAYS; index++) {
             const slot = new St.Bin({x_expand: true, y_align: Clutter.ActorAlign.END});
             const bar = new St.Widget({style_class: 'credit-pulse-chart-bar credit-pulse-chart-bar-weekday'});
-            bar.set_width(34);
+            bar.set_width(22);
             bar.set_height(6);
             slot.set_child(bar);
             chart.add_child(slot);

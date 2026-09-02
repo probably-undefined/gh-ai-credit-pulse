@@ -84,7 +84,7 @@ jobs:
             exit 1
           fi
           printf '%s\n' "$version" >"$root/VERSION"
-          install -m 0644 README.md LICENSE "$root/"
+          install -m 0644 README.md LICENSE assets/fonts/LICENSE-Inter.txt "$root/"
           epoch="$(git log -1 --format=%ct)"
           tar --sort=name --mtime="@${epoch}" --owner=0 --group=0 --numeric-owner \
             -czf "release/${asset}" -C staging gh-ai-credit-pulse

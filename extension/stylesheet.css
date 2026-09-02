@@ -29,9 +29,11 @@
   padding: 18px;
   spacing: 14px;
   color: #f8faff;
-  background-color: #080b14;
-  border: 1px solid rgba(79, 96, 135, 0.62);
-  border-radius: 16px;
+  background-gradient-direction: vertical;
+  background-gradient-start: #0f0e1e;
+  background-gradient-end: #080a12;
+  border: 1px solid rgba(139, 92, 246, 0.28);
+  border-radius: 18px;
 }
 
 .credit-pulse-header {
@@ -40,9 +42,8 @@
 
 .credit-pulse-title {
   color: #fafaff;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 800;
-  letter-spacing: 0.5px;
 }
 
 .credit-pulse-subtitle,
@@ -64,9 +65,9 @@
 
 .credit-pulse-hero {
   background-gradient-direction: horizontal;
-  background-gradient-start: #1d1537;
-  background-gradient-end: #10182d;
-  border: 1px solid rgba(139, 92, 246, 0.58);
+  background-gradient-start: #28194c;
+  background-gradient-end: #121523;
+  border: 1px solid rgba(139, 92, 246, 0.45);
   border-radius: 16px;
   padding: 16px;
   spacing: 6px;
@@ -92,8 +93,8 @@
 
 .credit-pulse-hero-value {
   color: #ffffff;
-  font-size: 38px;
-  font-weight: 700;
+  font-size: 40px;
+  font-weight: 800;
 }
 
 .credit-pulse-metrics {
@@ -103,8 +104,8 @@
 .credit-pulse-card,
 .credit-pulse-allowance,
 .credit-pulse-pulse {
-  background-color: rgba(16, 23, 40, 0.96);
-  border: 1px solid rgba(79, 96, 135, 0.62);
+  background-color: rgba(18, 22, 35, 0.96);
+  border: 1px solid rgba(79, 96, 135, 0.45);
   border-radius: 16px;
   padding: 12px;
   spacing: 6px;
@@ -116,8 +117,8 @@
 
 .credit-pulse-card-value {
   color: #fbfcff;
-  font-size: 17px;
-  font-weight: 700;
+  font-size: 18px;
+  font-weight: 800;
 }
 
 .credit-pulse-pulse {
@@ -137,30 +138,30 @@
 }
 
 .credit-pulse-chart-bar {
-  width: 34px;
+  width: 22px;
   min-height: 2px;
-  border-radius: 5px;
+  border-radius: 6px 6px 3px 3px;
 }
 
 .credit-pulse-chart-bar-weekday {
   background-gradient-direction: vertical;
-  background-gradient-start: #9f7aea;
-  background-gradient-end: #6746bd;
-  border: 1px solid rgba(196, 181, 253, 0.38);
+  background-gradient-start: #a78bfa;
+  background-gradient-end: #6d4bd6;
+  border: none;
 }
 
 .credit-pulse-chart-bar-weekend {
   background-gradient-direction: vertical;
-  background-gradient-start: #5b6780;
-  background-gradient-end: #3c465c;
-  border: 1px solid rgba(158, 169, 192, 0.32);
+  background-gradient-start: #6b7891;
+  background-gradient-end: #414b62;
+  border: none;
 }
 
 .credit-pulse-chart-bar-current {
   background-gradient-direction: vertical;
-  background-gradient-start: #5eead4;
+  background-gradient-start: #6ee7b7;
   background-gradient-end: #10b981;
-  border: 1px solid rgba(52, 211, 153, 0.62);
+  border: none;
 }
 
 .credit-pulse-chart-labels {
