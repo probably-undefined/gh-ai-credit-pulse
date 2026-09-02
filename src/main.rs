@@ -192,6 +192,7 @@ impl Dashboard {
             ))
             .size(11)
             .color(MUTED),
+            text("Forecast: weekdays 06:00–19:00").size(11).color(MUTED),
             text(format!(
                 "{}  ·  {} samples",
                 reset_text(current.reset_at),

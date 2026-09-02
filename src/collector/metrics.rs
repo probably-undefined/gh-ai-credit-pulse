@@ -1,7 +1,11 @@
 use super::Result;
 use super::model::{Current, DailyUsage, DashboardData, Metrics, UsageSample, Window};
 use super::store::{SampleRow, Store};
-use chrono::{Datelike, Local, LocalResult, NaiveDate, TimeZone, Utc};
+use chrono::{Datelike, Local, LocalResult, NaiveDate, TimeZone, Utc, Weekday};
+
+const WORKDAY_START_HOUR: u32 = 6;
+const WORKDAY_END_HOUR: u32 = 19;
+const MINIMUM_PACE_SECONDS: f64 = 60.0 * 60.0;
 
 pub(crate) fn build_dashboard(store: &Store, window: Window, now: i64) -> Result<DashboardData> {
     let latest = store.latest_rows(2)?;
@@ -32,8 +36,7 @@ pub(crate) fn build_dashboard(store: &Store, window: Window, now: i64) -> Result
     let cycle_start = cycle_start(current_row.reset_at, now);
     let elapsed_days = ((now - cycle_start) as f64 / 86_400.0).max(1.0 / 24.0);
     let average_per_day = current_used / elapsed_days;
-    let (projected_at_reset, pace_delta) =
-        projection(current_row, now, cycle_start, average_per_day);
+    let (projected_at_reset, pace_delta) = projection(current_row, now, cycle_start);
 
     Ok(DashboardData {
         status: "ok".to_owned(),
@@ -197,24 +200,84 @@ fn cycle_start(reset_at: Option<i64>, now: i64) -> i64 {
     )
 }
 
-fn projection(
+fn projection(current: &SampleRow, now: i64, start: i64) -> (Option<f64>, Option<f64>) {
+    projection_in(current, now, start, &Local)
+}
+
+fn projection_in<Tz: TimeZone>(
     current: &SampleRow,
     now: i64,
     start: i64,
-    average_per_day: f64,
+    timezone: &Tz,
 ) -> (Option<f64>, Option<f64>) {
     let Some(reset_at) = current.reset_at.filter(|reset| *reset > now) else {
         return (None, None);
     };
-    let projected = current.credits_used + average_per_day * (reset_at - now) as f64 / 86_400.0;
+
+    let elapsed_work_seconds = working_seconds_between_in(start, now, timezone);
+    let remaining_work_seconds = working_seconds_between_in(now, reset_at, timezone);
+    let projected = if elapsed_work_seconds > 0.0 {
+        let rate_per_work_second =
+            current.credits_used / elapsed_work_seconds.max(MINIMUM_PACE_SECONDS);
+        current.credits_used + rate_per_work_second * remaining_work_seconds
+    } else {
+        current.credits_used
+    };
+
     let pace = current
         .entitlement
-        .filter(|_| reset_at > start)
+        .filter(|_| elapsed_work_seconds + remaining_work_seconds > 0.0)
         .map(|entitlement| {
-            let elapsed = (now - start) as f64 / (reset_at - start) as f64;
-            entitlement * elapsed.clamp(0.0, 1.0) - current.credits_used
+            let elapsed = elapsed_work_seconds / (elapsed_work_seconds + remaining_work_seconds);
+            entitlement * elapsed - current.credits_used
         });
     (Some(projected), pace)
+}
+
+fn working_seconds_between_in<Tz: TimeZone>(start: i64, end: i64, timezone: &Tz) -> f64 {
+    if end <= start {
+        return 0.0;
+    }
+
+    let Some(mut date) = timezone
+        .timestamp_opt(start, 0)
+        .earliest()
+        .map(|value| value.date_naive())
+    else {
+        return 0.0;
+    };
+    let Some(end_date) = timezone
+        .timestamp_opt(end, 0)
+        .earliest()
+        .map(|value| value.date_naive())
+    else {
+        return 0.0;
+    };
+
+    let mut seconds = 0_i64;
+    while date <= end_date {
+        if !matches!(date.weekday(), Weekday::Sat | Weekday::Sun) {
+            let work_start = local_hour_epoch(timezone, date, WORKDAY_START_HOUR);
+            let work_end = local_hour_epoch(timezone, date, WORKDAY_END_HOUR);
+            if let (Some(work_start), Some(work_end)) = (work_start, work_end) {
+                seconds += (end.min(work_end) - start.max(work_start)).max(0);
+            }
+        }
+        let Some(next_date) = date.succ_opt() else {
+            break;
+        };
+        date = next_date;
+    }
+
+    seconds as f64
+}
+
+fn local_hour_epoch<Tz: TimeZone>(timezone: &Tz, date: NaiveDate, hour: u32) -> Option<i64> {
+    let naive = date.and_hms_opt(hour, 0, 0)?;
+    timezone
+        .from_local_datetime(&naive)
+        .earliest()
+        .map(|value| value.timestamp())
 }
 
 fn current_from_row(row: &SampleRow) -> Current {
@@ -322,6 +385,65 @@ mod tests {
         assert!(series.len() <= 40);
         assert_eq!(series.first().unwrap().used, 0.0);
         assert_eq!(series.last().unwrap().used, 499.0);
+    }
+
+    #[test]
+    fn working_time_skips_weekends_and_clips_to_workday_hours() {
+        let friday_at_18 = timestamp(2026, 9, 4, 18);
+        let monday_at_7 = timestamp(2026, 9, 7, 7);
+
+        assert_eq!(
+            working_seconds_between_in(friday_at_18, monday_at_7, &Utc),
+            2.0 * 60.0 * 60.0
+        );
+
+        let monday_midnight = timestamp(2026, 9, 7, 0);
+        let tuesday_at_23 = timestamp(2026, 9, 8, 23);
+        assert_eq!(
+            working_seconds_between_in(monday_midnight, tuesday_at_23, &Utc),
+            2.0 * 13.0 * 60.0 * 60.0
+        );
+    }
+
+    #[test]
+    fn projection_uses_only_elapsed_and_remaining_work_time() {
+        let start = timestamp(2026, 9, 4, 6);
+        let now = timestamp(2026, 9, 4, 19);
+        let reset_at = timestamp(2026, 9, 7, 19);
+        let current = SampleRow {
+            credits_used: 40.0,
+            entitlement: Some(100.0),
+            reset_at: Some(reset_at),
+            ..sample_row(1)
+        };
+
+        let (projected, pace) = projection_in(&current, now, start, &Utc);
+
+        assert_eq!(projected, Some(80.0));
+        assert_eq!(pace, Some(10.0));
+    }
+
+    #[test]
+    fn projection_adds_nothing_during_a_weekend() {
+        let start = timestamp(2026, 9, 1, 6);
+        let friday_at_19 = timestamp(2026, 9, 4, 19);
+        let monday_at_6 = timestamp(2026, 9, 7, 6);
+        let current = SampleRow {
+            credits_used: 120.0,
+            reset_at: Some(monday_at_6),
+            ..sample_row(1)
+        };
+
+        let (projected, _) = projection_in(&current, friday_at_19, start, &Utc);
+
+        assert_eq!(projected, Some(120.0));
+    }
+
+    fn timestamp(year: i32, month: u32, day: u32, hour: u32) -> i64 {
+        Utc.with_ymd_and_hms(year, month, day, hour, 0, 0)
+            .single()
+            .unwrap()
+            .timestamp()
     }
 
     fn sample_row(id: i64) -> SampleRow {
