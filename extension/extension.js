@@ -276,7 +276,7 @@ class CreditIndicator extends PanelMenu.Button {
         this._rate.text = `${this._money(metrics.rate_per_hour)}/h`;
         this._rateDetail.text = `${this._money(metrics.average_per_day)}/day avg`;
         this._projection.text = this._money(metrics.projected_at_reset);
-        this._projectionDetail.text = 'at next reset';
+        this._projectionDetail.text = 'weekdays · 06:00–19:00';
         this._subtitle.text = `${current.plan || 'Copilot'}  ·  ${this._resetText(current.reset_at)}`;
 
         const daily = Array.isArray(payload.daily) ? payload.daily.slice(-7) : [];

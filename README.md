@@ -10,6 +10,13 @@ The GNOME top bar shows the current cost and hourly rate, for example
 
 The conversion is fixed at **100 AIC = $1.00**.
 
+The desktop dashboard uses Iced's software `tiny-skia` renderer. It does not
+build or require the WGPU/Vulkan renderer.
+
+The billing-cycle projection uses local working time: Monday through Friday,
+06:00–19:00. Weekends and time outside that window add no projected usage;
+historical totals and recent-rate metrics still reflect all recorded usage.
+
 ## Install
 
 ```bash
@@ -41,7 +48,7 @@ curl -fsSL https://raw.githubusercontent.com/probably-undefined/gh-ai-credit-pul
 ## Update
 
 ```bash
-gh-ai-credit-pulse --self-update
+gh-ai-credit-pulse upgrade
 ```
 
 Running the curl installer again performs the same update. Existing application
@@ -69,7 +76,7 @@ gh-ai-credit-pulse                 # open the Iced dashboard
 gh-ai-credit-pulse --help
 gh-ai-credit-pulse doctor          # headless installation diagnostics
 gh-ai-credit-pulse --version
-gh-ai-credit-pulse --self-update
+gh-ai-credit-pulse upgrade
 gh-ai-credit-pulse sample --window 24h | jq
 gh-ai-credit-pulse dashboard --window 7d | jq
 gh-ai-credit-pulse export --output gh-ai-credit-history.csv
