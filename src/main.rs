@@ -1,17 +1,23 @@
+use chrono::{Datelike, NaiveDate, Weekday};
 use clap::Parser;
 use gh_ai_credit_pulse::collector::{
     Collector, Current, DailyUsage, DashboardData, Metrics, UsageSample, Window, default_db_path,
 };
 use iced::widget::{Row, Space, button, column, container, progress_bar, row, text};
 use iced::{
-    Alignment, Background, Border, Color, Element, Length, Size, Subscription, Task, Theme, window,
+    Alignment, Background, Border, Color, Degrees, Element, Gradient, Length, Size, Subscription,
+    Task, Theme, gradient, window,
 };
 use std::time::Duration;
 
+// Palette. The GNOME extension stylesheet mirrors these values so both
+// surfaces read as one product: violet is the brand accent, mint marks
+// "live", "remaining", and "today", amber warns, and the error tone is
+// reserved for failures.
 const BACKGROUND: Color = Color::from_rgb(0.027, 0.035, 0.063);
 const SURFACE: Color = Color::from_rgb(0.059, 0.078, 0.125);
 const SURFACE_HIGH: Color = Color::from_rgb(0.075, 0.094, 0.145);
-const HERO: Color = SURFACE;
+const HERO_TINT: Color = Color::from_rgb(0.114, 0.082, 0.216);
 const BORDER: Color = Color::from_rgb(0.157, 0.196, 0.294);
 const TEXT: Color = Color::from_rgb(0.973, 0.980, 1.0);
 const MUTED: Color = Color::from_rgb(0.620, 0.663, 0.753);
@@ -19,10 +25,24 @@ const VIOLET: Color = Color::from_rgb(0.545, 0.361, 0.965);
 const MINT: Color = Color::from_rgb(0.204, 0.827, 0.600);
 const AMBER: Color = Color::from_rgb(0.984, 0.749, 0.141);
 const ERROR: Color = Color::from_rgb(0.984, 0.443, 0.522);
+
+// Type scale. Nothing renders below 11px so labels stay legible on a
+// 1080p desktop without display scaling.
+const TYPE_DISPLAY: f32 = 56.0;
+const TYPE_STAT: f32 = 30.0;
+const TYPE_CARD: f32 = 28.0;
+const TYPE_TITLE: f32 = 18.0;
+const TYPE_BODY: f32 = 13.0;
+const TYPE_LABEL: f32 = 12.0;
+const TYPE_KICKER: f32 = 11.0;
+
 const CARD_RADIUS: f32 = 16.0;
 const INSET_RADIUS: f32 = 12.0;
 const CONTROL_RADIUS: f32 = 10.0;
 const BAR_RADIUS: f32 = 5.0;
+const CHART_DAYS: usize = 14;
+const ALLOWANCE_WARNING: f32 = 0.75;
+const ALLOWANCE_CRITICAL: f32 = 0.90;
 const APPLICATION_ID: &str = "io.github.probably_undefined.GhAiCreditPulse";
 
 #[derive(Debug, Parser)]
@@ -44,6 +64,7 @@ fn run_gui() -> iced::Result {
         .theme(app_theme)
         .window(window::Settings {
             size: Size::new(1120.0, 760.0),
+            min_size: Some(Size::new(880.0, 640.0)),
             platform_specific: window::settings::PlatformSpecific {
                 application_id: APPLICATION_ID.to_owned(),
                 ..Default::default()
@@ -117,23 +138,18 @@ impl Dashboard {
         let metrics = &self.data.metrics;
         let used = current.credits_used.unwrap_or(0.0);
         let entitlement = current.entitlement.filter(|value| *value > 0.0);
-        let (pace_label, pace_color) = if entitlement.is_some() {
-            pace_label(metrics.pace_delta)
-        } else {
-            ("No allowance data".to_owned(), MUTED)
-        };
 
         let status = if self.refreshing {
             status_pill("SYNCING", MUTED)
         } else if self.error.is_some() {
-            status_pill("CACHED", ERROR)
+            status_pill("CACHED", AMBER)
         } else {
             status_pill("● LIVE", MINT)
         };
 
         let brand = column![
-            text("COPILOT USAGE").size(18).color(TEXT),
-            text("LOCAL COST HISTORY").size(10).color(MUTED),
+            text("COPILOT USAGE").size(TYPE_TITLE).color(TEXT),
+            text("LOCAL COST HISTORY").size(TYPE_KICKER).color(MUTED),
         ]
         .spacing(3);
 
@@ -147,9 +163,9 @@ impl Dashboard {
                 } else {
                     "↻  Refresh"
                 })
-                .size(12)
+                .size(TYPE_LABEL)
             )
-            .on_press(Message::Refresh)
+            .on_press_maybe((!self.refreshing).then_some(Message::Refresh))
             .padding([9, 14])
             .style(refresh_button_style),
         ]
@@ -159,14 +175,14 @@ impl Dashboard {
         let hero_copy = column![
             kicker("CURRENT BILLING CYCLE", VIOLET),
             text(money(current.credits_used, false))
-                .size(58)
+                .size(TYPE_DISPLAY)
                 .color(TEXT),
             row![
                 text(format!("{} AI credits", number(current.credits_used)))
-                    .size(13)
+                    .size(TYPE_BODY)
                     .color(MUTED),
                 dot(),
-                text("100 AIC = $1.00").size(13).color(MUTED),
+                text("100 AIC = $1.00").size(TYPE_BODY).color(MUTED),
             ]
             .spacing(9)
             .align_y(Alignment::Center),
@@ -175,30 +191,33 @@ impl Dashboard {
         .width(Length::FillPortion(3));
 
         let allowance_note = if entitlement.is_some() {
-            text(pace_label).size(11).color(pace_color)
+            let (label, color) = pace_label(metrics.pace_delta);
+            text(label).size(TYPE_LABEL).color(color)
         } else {
             text("Allowance not reported by GitHub")
-                .size(11)
+                .size(TYPE_LABEL)
                 .color(MUTED)
         };
         let cycle_summary = column![
-            kicker("ESTIMATED TOTAL", MUTED),
+            kicker("PROJECTED TOTAL", MUTED),
             text(money(metrics.projected_at_reset, false))
-                .size(30)
+                .size(TYPE_STAT)
                 .color(TEXT),
             text(format!(
                 "{}/day cycle average",
                 money(metrics.average_per_day, false)
             ))
-            .size(11)
+            .size(TYPE_LABEL)
             .color(MUTED),
-            text("Forecast: weekdays 06:00–19:00").size(11).color(MUTED),
+            text("Forecast counts weekdays 06:00–19:00")
+                .size(TYPE_LABEL)
+                .color(MUTED),
             text(format!(
                 "{}  ·  {} samples",
                 reset_text(current.reset_at),
                 self.data.sample_count.unwrap_or(0)
             ))
-            .size(11)
+            .size(TYPE_LABEL)
             .color(MUTED),
             allowance_note,
         ]
@@ -226,9 +245,9 @@ impl Dashboard {
                 "Recorded usage".to_owned(),
             ),
             metric_card(
-                "CURRENT RATE",
+                "6-HOUR RATE",
                 format!("{}/h", money(metrics.rate_per_hour, false)),
-                "Based on the last six hours".to_owned(),
+                "Average over the last six hours".to_owned(),
             ),
         ]
         .spacing(14);
@@ -251,13 +270,20 @@ impl Dashboard {
             "{} · history stored locally · updates every 30 seconds",
             current.plan.as_deref().unwrap_or("GitHub Copilot")
         ))
-        .size(10)
+        .size(TYPE_KICKER)
         .color(MUTED);
 
-        let mut content = column![header, hero, metrics_row, lower, footer].spacing(16);
+        // Problems surface directly under the header, where the eye lands
+        // first, instead of trailing the footer.
+        let mut content = column![header].spacing(16);
         if let Some(error) = &self.error {
             content = content.push(error_banner(error));
         }
+        content = content
+            .push(hero)
+            .push(metrics_row)
+            .push(lower)
+            .push(footer);
 
         container(content)
             .width(Length::Fill)
@@ -272,12 +298,29 @@ impl Dashboard {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DayKind {
+    Weekday,
+    Weekend,
+    Today,
+}
+
+impl DayKind {
+    fn color(self) -> Color {
+        match self {
+            Self::Weekday => VIOLET,
+            Self::Weekend => MUTED,
+            Self::Today => MINT,
+        }
+    }
+}
+
 fn usage_chart<'a>(
     days: &[DailyUsage],
     series: &[UsageSample],
     sample_count: Option<u64>,
 ) -> Element<'a, Message> {
-    let start = days.len().saturating_sub(14);
+    let start = days.len().saturating_sub(CHART_DAYS);
     let visible = &days[start..];
     let active_days = visible.iter().filter(|day| day.credits > 0.0).count();
     let daily_ready = active_days >= 2;
@@ -285,6 +328,7 @@ fn usage_chart<'a>(
         .spacing(7)
         .height(Length::Fill)
         .align_y(Alignment::End);
+    let mut legend: Option<Element<'a, Message>> = None;
 
     let (title, subtitle, summary) = if daily_ready {
         let max_credits = visible
@@ -293,43 +337,30 @@ fn usage_chart<'a>(
             .fold(0.0_f64, f64::max)
             .max(1.0);
         for (index, day) in visible.iter().enumerate() {
-            let intensity = (day.credits / max_credits).clamp(0.0, 1.0) as f32;
-            let height = if day.credits > 0.0 {
-                10.0 + intensity * 190.0
-            } else {
-                3.0
-            };
-            let color = VIOLET;
-            let label = if index + 1 == visible.len() {
+            let today = index + 1 == visible.len();
+            let kind = day_kind(&day.date, today);
+            let label = if today {
                 "Today".to_owned()
-            } else if index % 2 == 0 {
-                short_date(&day.date)
             } else {
-                " ".to_owned()
+                weekday_initial(day)
             };
             bars = bars.push(chart_bar(
-                height,
-                intensity,
-                color,
+                (day.credits / max_credits).clamp(0.0, 1.0) as f32,
+                kind.color(),
                 label,
-                index + 1 == visible.len(),
+                today,
             ));
         }
+        legend = Some(chart_legend());
         (
             "USAGE HISTORY".to_owned(),
-            "Last 14 days".to_owned(),
+            date_range(visible).unwrap_or_else(|| format!("Last {CHART_DAYS} days")),
             money(Some(visible.iter().map(|day| day.credits).sum()), false),
         )
     } else if series.len() >= 2 {
         let buckets = recent_buckets(series, 24);
         let maximum = buckets.iter().copied().fold(0.0_f64, f64::max).max(1.0);
         for (index, credits) in buckets.iter().enumerate() {
-            let intensity = (*credits / maximum).clamp(0.0, 1.0) as f32;
-            let height = if *credits > 0.0 {
-                8.0 + intensity * 182.0
-            } else {
-                3.0
-            };
             let last = index + 1 == buckets.len();
             let label = if index == 0 {
                 "Earlier".to_owned()
@@ -338,7 +369,13 @@ fn usage_chart<'a>(
             } else {
                 " ".to_owned()
             };
-            bars = bars.push(chart_bar(height, intensity, VIOLET, label, last));
+            let color = if last { MINT } else { VIOLET };
+            bars = bars.push(chart_bar(
+                (*credits / maximum).clamp(0.0, 1.0) as f32,
+                color,
+                label,
+                last,
+            ));
         }
         (
             "RECENT ACTIVITY".to_owned(),
@@ -349,9 +386,11 @@ fn usage_chart<'a>(
         bars = bars.push(
             container(
                 column![
-                    text("Waiting for usage samples").size(17).color(TEXT),
+                    text("Waiting for usage samples")
+                        .size(TYPE_TITLE)
+                        .color(TEXT),
                     text("The chart appears after the next refresh.")
-                        .size(11)
+                        .size(TYPE_LABEL)
                         .color(MUTED),
                 ]
                 .spacing(7)
@@ -369,72 +408,135 @@ fn usage_chart<'a>(
         )
     };
 
-    container(
+    let mut heading = row![
         column![
-            row![
-                column![
-                    text(title).size(10).color(MUTED),
-                    text(subtitle).size(11).color(MUTED),
-                ]
-                .spacing(3),
-                Space::new().width(Length::Fill),
-                text(summary).size(13).color(MUTED),
-            ]
-            .align_y(Alignment::Center),
-            bars,
+            text(title).size(TYPE_KICKER).color(MUTED),
+            text(subtitle).size(TYPE_LABEL).color(MUTED),
         ]
-        .spacing(15)
-        .height(Length::Fill),
-    )
-    .width(Length::FillPortion(3))
-    .height(Length::Fill)
-    .padding(18)
-    .style(|_| elevated_style())
-    .into()
+        .spacing(3),
+        Space::new().width(Length::Fill),
+    ]
+    .spacing(18)
+    .align_y(Alignment::Center);
+    if let Some(legend) = legend {
+        heading = heading.push(legend);
+    }
+    heading = heading.push(text(summary).size(TYPE_BODY).color(TEXT));
+
+    container(column![heading, bars].spacing(15).height(Length::Fill))
+        .width(Length::FillPortion(3))
+        .height(Length::Fill)
+        .padding(18)
+        .style(|_| elevated_style())
+        .into()
+}
+
+fn day_kind(date: &str, today: bool) -> DayKind {
+    if today {
+        return DayKind::Today;
+    }
+    match parse_date(date).map(|date| date.weekday()) {
+        Some(Weekday::Sat | Weekday::Sun) => DayKind::Weekend,
+        _ => DayKind::Weekday,
+    }
+}
+
+fn parse_date(date: &str) -> Option<NaiveDate> {
+    NaiveDate::parse_from_str(date, "%Y-%m-%d").ok()
+}
+
+fn weekday_initial(day: &DailyUsage) -> String {
+    let initial = day.label.trim();
+    if initial.is_empty() {
+        parse_date(&day.date).map_or_else(
+            || "·".to_owned(),
+            |date| date.format("%a").to_string().chars().take(1).collect(),
+        )
+    } else {
+        initial.to_owned()
+    }
+}
+
+fn date_range(days: &[DailyUsage]) -> Option<String> {
+    let first = parse_date(&days.first()?.date)?;
+    let last = parse_date(&days.last()?.date)?;
+    Some(format!("{} – {}", short_date(first), short_date(last)))
+}
+
+fn short_date(date: NaiveDate) -> String {
+    format!("{} {}", date.format("%b"), date.day())
 }
 
 fn recent_buckets(series: &[UsageSample], maximum: usize) -> Vec<f64> {
-    let chunk_size = (series.len() + maximum - 1) / maximum;
+    let chunk_size = series.len().div_ceil(maximum);
     series
         .chunks(chunk_size.max(1))
         .map(|chunk| chunk.iter().map(|sample| sample.delta).sum())
         .collect()
 }
 
-fn chart_bar<'a>(
-    height: f32,
-    intensity: f32,
-    color: Color,
-    label: String,
-    current: bool,
-) -> Element<'a, Message> {
-    let bar = container(Space::new().width(Length::Fill).height(Length::Fill))
-        .width(Length::Fill)
-        .height(Length::Fixed(height))
-        .style(move |_| bar_style(color, 0.38 + intensity * 0.62));
-    column![
-        Space::new().height(Length::Fill),
-        bar,
-        text(label)
-            .size(9)
-            .color(if current { VIOLET } else { MUTED }),
+/// One column of the bar chart. `share` is the bar's height as a fraction of
+/// the tallest bar; the column fills whatever height the chart card has, so
+/// the chart scales with the window instead of using fixed pixel heights.
+fn chart_bar<'a>(share: f32, color: Color, label: String, current: bool) -> Element<'a, Message> {
+    const SCALE: u16 = 1000;
+    let mut column = column![]
+        .width(Length::FillPortion(1))
+        .height(Length::Fill)
+        .spacing(6)
+        .align_x(Alignment::Center);
+
+    if share > 0.0 {
+        let portion =
+            ((share.clamp(0.0, 1.0) * f32::from(SCALE - 2)).round() as u16 + 1).min(SCALE - 1);
+        column = column
+            .push(Space::new().height(Length::FillPortion(SCALE - portion)))
+            .push(
+                container(Space::new().width(Length::Fill))
+                    .width(Length::Fill)
+                    .height(Length::FillPortion(portion))
+                    .style(move |_| bar_style(color, 0.92)),
+            );
+    } else {
+        column = column.push(Space::new().height(Length::Fill)).push(
+            container(Space::new().width(Length::Fill))
+                .width(Length::Fill)
+                .height(Length::Fixed(3.0))
+                .style(move |_| bar_style(color, 0.35)),
+        );
+    }
+
+    column
+        .push(
+            text(label)
+                .size(TYPE_KICKER)
+                .color(if current { MINT } else { MUTED }),
+        )
+        .into()
+}
+
+fn chart_legend<'a>() -> Element<'a, Message> {
+    row![
+        legend_item(DayKind::Weekday.color(), "Weekday"),
+        legend_item(DayKind::Weekend.color(), "Weekend"),
+        legend_item(DayKind::Today.color(), "Today"),
     ]
-    .width(Length::FillPortion(1))
-    .height(Length::Fill)
-    .spacing(6)
-    .align_x(Alignment::Center)
+    .spacing(12)
+    .align_y(Alignment::Center)
     .into()
 }
 
-fn short_date(date: &str) -> String {
-    let mut parts = date.split('-');
-    let _year = parts.next();
-    let month = parts.next().and_then(|value| value.parse::<u8>().ok());
-    let day = parts.next().and_then(|value| value.parse::<u8>().ok());
-    match (month, day) {
-        (Some(month), Some(day)) => format!("{month}/{day}"),
-        _ => "·".to_owned(),
-    }
+fn legend_item<'a>(color: Color, label: &'static str) -> Element<'a, Message> {
+    row![
+        container(Space::new())
+            .width(Length::Fixed(9.0))
+            .height(Length::Fixed(9.0))
+            .style(move |_| bar_style(color, 0.92)),
+        text(label).size(TYPE_KICKER).color(MUTED),
+    ]
+    .spacing(5)
+    .align_y(Alignment::Center)
+    .into()
 }
 
 fn allowance_panel<'a>(
@@ -445,27 +547,41 @@ fn allowance_panel<'a>(
     fraction: f32,
 ) -> Element<'a, Message> {
     let percent = fraction * 100.0;
+    let tone = allowance_tone(fraction);
     container(
         column![
             row![
-                kicker("ALLOWANCE", MINT),
+                kicker("ALLOWANCE", tone),
                 Space::new().width(Length::Fill),
-                text("Monthly cap").size(10).color(MUTED),
+                text("Monthly cap").size(TYPE_KICKER).color(MUTED),
             ]
             .align_y(Alignment::Center),
-            text(format!("{percent:.0}% used")).size(30).color(TEXT),
-            progress_bar(0.0..=1.0, fraction),
+            text(format!("{percent:.0}% used"))
+                .size(TYPE_STAT)
+                .color(TEXT),
+            progress_bar(0.0..=1.0, fraction)
+                .girth(10)
+                .style(move |_| progress_bar::Style {
+                    background: Background::Color(Color { a: 0.85, ..BORDER }),
+                    bar: Background::Color(tone),
+                    border: Border {
+                        radius: BAR_RADIUS.into(),
+                        ..Border::default()
+                    },
+                }),
             row![
                 column![
-                    text("REMAINING").size(9).color(MUTED),
-                    text(money(current.remaining, false)).size(18).color(MINT),
+                    text("REMAINING").size(TYPE_KICKER).color(MUTED),
+                    text(money(current.remaining, false))
+                        .size(TYPE_TITLE)
+                        .color(tone),
                 ]
                 .spacing(3),
                 Space::new().width(Length::Fill),
                 column![
-                    text("DAILY AVG").size(9).color(MUTED),
+                    text("DAILY AVG").size(TYPE_KICKER).color(MUTED),
                     text(money(metrics.average_per_day, false))
-                        .size(18)
+                        .size(TYPE_TITLE)
                         .color(TEXT),
                 ]
                 .spacing(3),
@@ -476,7 +592,7 @@ fn allowance_panel<'a>(
                     money(Some(used), false),
                     money(Some(entitlement), false)
                 ))
-                .size(10)
+                .size(TYPE_KICKER)
                 .color(MUTED),
             )
             .width(Length::Fill)
@@ -490,6 +606,18 @@ fn allowance_panel<'a>(
     .padding(18)
     .style(|_| elevated_style())
     .into()
+}
+
+/// Mint while comfortably inside the cap, amber once three quarters are
+/// gone, and the error tone when the cycle is nearly exhausted.
+fn allowance_tone(fraction: f32) -> Color {
+    if fraction >= ALLOWANCE_CRITICAL {
+        ERROR
+    } else if fraction >= ALLOWANCE_WARNING {
+        AMBER
+    } else {
+        MINT
+    }
 }
 
 fn load_dashboard(force: bool) -> Task<Message> {
@@ -537,6 +665,7 @@ fn reset_text(epoch: Option<i64>) -> String {
         .map_or(0, |duration| duration.as_secs() as i64);
     let days = ((reset - now).max(0) + 86_399) / 86_400;
     match days {
+        0 => "Resets today".to_owned(),
         1 => "Resets tomorrow".to_owned(),
         _ => format!("Resets in {days} days"),
     }
@@ -563,8 +692,8 @@ fn metric_card<'a>(title: &'static str, value: String, detail: String) -> Elemen
     container(
         column![
             kicker(title, MUTED),
-            text(value).size(29).color(TEXT),
-            text(detail).size(11).color(MUTED),
+            text(value).size(TYPE_CARD).color(TEXT),
+            text(detail).size(TYPE_LABEL).color(MUTED),
         ]
         .spacing(8),
     )
@@ -586,16 +715,16 @@ fn vertical_divider<'a>() -> Element<'a, Message> {
 }
 
 fn kicker<'a>(value: &'static str, color: Color) -> iced::widget::Text<'a> {
-    text(value).size(10).color(color)
+    text(value).size(TYPE_KICKER).color(color)
 }
 
 fn dot<'a>() -> Element<'a, Message> {
-    text("•").size(12).color(BORDER).into()
+    text("•").size(TYPE_LABEL).color(BORDER).into()
 }
 
 fn status_pill<'a>(value: &str, color: Color) -> Element<'a, Message> {
-    container(text(value.to_owned()).size(9).color(color))
-        .padding([5, 9])
+    container(text(value.to_owned()).size(TYPE_KICKER).color(color))
+        .padding([5, 10])
         .style(move |_| container::Style {
             background: Some(Background::Color(Color { a: 0.12, ..color })),
             border: Border {
@@ -615,7 +744,7 @@ fn refresh_button_style(theme: &Theme, status: button::Status) -> button::Style 
 }
 
 fn error_banner<'a>(message: &'a str) -> Element<'a, Message> {
-    container(text(message).size(11).color(ERROR))
+    container(text(message).size(TYPE_LABEL).color(ERROR))
         .width(Length::Fill)
         .padding(10)
         .style(|_| container::Style {
@@ -630,11 +759,16 @@ fn error_banner<'a>(message: &'a str) -> Element<'a, Message> {
         .into()
 }
 
+/// The hero carries a soft violet wash so the headline figure sits apart
+/// from the plain metric cards below it.
 fn hero_style() -> container::Style {
+    let wash = gradient::Linear::new(Degrees(155.0))
+        .add_stop(0.0, HERO_TINT)
+        .add_stop(1.0, SURFACE);
     container::Style {
-        background: Some(Background::Color(HERO)),
+        background: Some(Background::Gradient(Gradient::Linear(wash))),
         border: Border {
-            color: Color { a: 0.72, ..BORDER },
+            color: Color { a: 0.55, ..VIOLET },
             width: 1.0,
             radius: CARD_RADIUS.into(),
         },
@@ -678,5 +812,59 @@ fn bar_style(color: Color, alpha: f32) -> container::Style {
             radius: BAR_RADIUS.into(),
         },
         ..container::Style::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn day(date: &str, credits: f64) -> DailyUsage {
+        DailyUsage {
+            date: date.to_owned(),
+            label: String::new(),
+            credits,
+        }
+    }
+
+    #[test]
+    fn weekends_and_today_are_encoded_separately() {
+        assert_eq!(day_kind("2026-09-05", false), DayKind::Weekend);
+        assert_eq!(day_kind("2026-09-06", false), DayKind::Weekend);
+        assert_eq!(day_kind("2026-09-07", false), DayKind::Weekday);
+        assert_eq!(day_kind("2026-09-06", true), DayKind::Today);
+        assert_eq!(day_kind("not a date", false), DayKind::Weekday);
+    }
+
+    #[test]
+    fn chart_heading_shows_the_visible_date_range() {
+        let days = [day("2026-08-20", 1.0), day("2026-09-02", 2.0)];
+        assert_eq!(date_range(&days).as_deref(), Some("Aug 20 – Sep 2"));
+        assert_eq!(date_range(&[]), None);
+    }
+
+    #[test]
+    fn weekday_initial_falls_back_to_the_date() {
+        assert_eq!(weekday_initial(&day("2026-09-02", 0.0)), "W");
+        let labelled = DailyUsage {
+            label: "F".to_owned(),
+            ..day("2026-09-02", 0.0)
+        };
+        assert_eq!(weekday_initial(&labelled), "F");
+    }
+
+    #[test]
+    fn allowance_tone_escalates_with_consumption() {
+        assert_eq!(allowance_tone(0.2), MINT);
+        assert_eq!(allowance_tone(0.75), AMBER);
+        assert_eq!(allowance_tone(0.95), ERROR);
+    }
+
+    #[test]
+    fn money_and_reset_copy_stay_readable() {
+        assert_eq!(money(Some(3027.0), false), "$30.27");
+        assert_eq!(money(Some(12.0), true), "+$0.12");
+        assert_eq!(money(None, false), "—");
+        assert_eq!(reset_text(None), "No reset reported");
     }
 }

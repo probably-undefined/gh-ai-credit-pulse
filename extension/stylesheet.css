@@ -1,3 +1,12 @@
+/*
+ * Shared visual language with the Iced dashboard (src/main.rs):
+ *   violet #8b5cf6  brand accent, weekday usage
+ *   mint   #34d399  live, remaining, today
+ *   amber  #fbbf24  warnings and "cached" state
+ *   red    #fb7185  errors and a nearly exhausted allowance
+ * Nothing renders below 9px so the popup stays legible without scaling.
+ */
+
 .credit-pulse-panel-label {
   color: #ddd6fe;
   font-weight: 750;
@@ -38,19 +47,19 @@
 
 .credit-pulse-subtitle,
 .credit-pulse-detail {
-  color: #8b97ad;
-  font-size: 10px;
+  color: #9ea9c0;
+  font-size: 11px;
 }
 
 .credit-pulse-status {
-  color: #5ee5b1;
+  color: #34d399;
   padding: 4px 2px;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
 }
 
-.credit-pulse-status-error {
-  color: #ff8c9f;
+.credit-pulse-status-stale {
+  color: #fbbf24;
 }
 
 .credit-pulse-hero {
@@ -64,8 +73,8 @@
 }
 
 .credit-pulse-kicker {
-  color: #9ca8bd;
-  font-size: 9px;
+  color: #9ea9c0;
+  font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.4px;
 }
@@ -74,14 +83,10 @@
   color: #b9a3ff;
 }
 
-.credit-pulse-kicker-cyan {
-  color: #57ddf1;
-}
-
 .credit-pulse-conversion {
-  color: #67e8f9;
+  color: #9ea9c0;
   padding: 3px 0;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
 }
 
@@ -125,6 +130,7 @@
   font-weight: 700;
 }
 
+/* Height must match CHART_HEIGHT in extension.js. */
 .credit-pulse-chart {
   height: 54px;
   spacing: 7px;
@@ -132,18 +138,29 @@
 
 .credit-pulse-chart-bar {
   width: 34px;
-  min-height: 6px;
+  min-height: 2px;
+  border-radius: 5px;
+}
+
+.credit-pulse-chart-bar-weekday {
   background-gradient-direction: vertical;
   background-gradient-start: #9f7aea;
   background-gradient-end: #6746bd;
   border: 1px solid rgba(196, 181, 253, 0.38);
-  border-radius: 5px;
+}
+
+.credit-pulse-chart-bar-weekend {
+  background-gradient-direction: vertical;
+  background-gradient-start: #5b6780;
+  background-gradient-end: #3c465c;
+  border: 1px solid rgba(158, 169, 192, 0.32);
 }
 
 .credit-pulse-chart-bar-current {
-  background-gradient-start: #67e8f9;
-  background-gradient-end: #0891b2;
-  border-color: rgba(103, 232, 249, 0.62);
+  background-gradient-direction: vertical;
+  background-gradient-start: #5eead4;
+  background-gradient-end: #10b981;
+  border: 1px solid rgba(52, 211, 153, 0.62);
 }
 
 .credit-pulse-chart-labels {
@@ -152,24 +169,46 @@
 
 .credit-pulse-chart-label {
   width: 34px;
-  color: #738099;
-  font-size: 7px;
+  color: #8b97ad;
+  font-size: 9px;
+  font-weight: 700;
   text-align: center;
+}
+
+.credit-pulse-chart-label-current {
+  color: #34d399;
+}
+
+.credit-pulse-legend {
+  spacing: 12px;
+  padding-top: 2px;
+}
+
+.credit-pulse-legend-item {
+  spacing: 5px;
+}
+
+.credit-pulse-legend-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+}
+
+.credit-pulse-legend-label {
+  color: #8b97ad;
+  font-size: 9px;
 }
 
 .credit-pulse-empty {
-  color: #8b97ad;
+  color: #9ea9c0;
   padding: 17px 4px 14px;
-  font-size: 10px;
+  font-size: 11px;
   text-align: center;
 }
 
-.credit-pulse-allowance {
-  border-color: rgba(79, 96, 135, 0.62);
-}
-
+/* Width must match PROGRESS_WIDTH in extension.js: 390 - 2*18 - 2*12. */
 .credit-pulse-progress-track {
-  width: 350px;
+  width: 330px;
   height: 8px;
   background-color: #202a40;
   border: 1px solid rgba(80, 102, 145, 0.30);
@@ -178,10 +217,20 @@
 
 .credit-pulse-progress {
   height: 8px;
-  background-gradient-direction: horizontal;
-  background-gradient-start: #8b5cf6;
-  background-gradient-end: #22d3ee;
   border-radius: 5px;
+  background-color: #34d399;
+}
+
+.credit-pulse-progress-ok {
+  background-color: #34d399;
+}
+
+.credit-pulse-progress-warning {
+  background-color: #fbbf24;
+}
+
+.credit-pulse-progress-critical {
+  background-color: #fb7185;
 }
 
 .credit-pulse-error {
@@ -190,5 +239,5 @@
   border: 1px solid rgba(244, 114, 182, 0.42);
   border-radius: 10px;
   padding: 9px;
-  font-size: 10px;
+  font-size: 11px;
 }

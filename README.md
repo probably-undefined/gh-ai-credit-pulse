@@ -14,6 +14,19 @@ The billing-cycle projection uses local working time: Monday through Friday,
 06:00–19:00. Weekends and time outside that window add no projected usage;
 historical totals and recent-rate metrics still reflect all recorded usage.
 
+## Visual language
+
+Both dashboards share one palette so a glance at the top bar and a glance at
+the desktop window mean the same thing:
+
+- **Violet** is the brand accent and marks weekday usage in the charts.
+- **Mint** means live data, remaining allowance, and today's bar.
+- **Amber** warns: the status pill while showing cached data, and the
+  allowance bar from 75% consumed.
+- **Red** is reserved for errors and an allowance past 90%.
+
+Weekend bars are muted because the projection deliberately ignores them.
+
 ## Install
 
 ```bash

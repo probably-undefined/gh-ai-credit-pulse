@@ -8,6 +8,12 @@ const ExtensionUtils = imports.misc.extensionUtils;
 
 const Me = ExtensionUtils.getCurrentExtension();
 const POLL_SECONDS = 30;
+const CHART_DAYS = 7;
+// Bar chart area in px; must match .credit-pulse-chart height in stylesheet.css.
+const CHART_HEIGHT = 54;
+// Dashboard width (390) minus its own and the allowance card's padding.
+// Must match .credit-pulse-progress-track width in stylesheet.css.
+const PROGRESS_WIDTH = 330;
 
 const CreditIndicator = GObject.registerClass(
 class CreditIndicator extends PanelMenu.Button {
@@ -115,7 +121,7 @@ class CreditIndicator extends PanelMenu.Button {
             style_class: 'credit-pulse-kicker credit-pulse-kicker-violet',
         }));
         heroHeader.add_child(new St.Label({
-            text: '100 AIC = $1',
+            text: '100 AIC = $1.00',
             style_class: 'credit-pulse-conversion',
         }));
         hero.add_child(heroHeader);
@@ -146,7 +152,7 @@ class CreditIndicator extends PanelMenu.Button {
         pulseHeader.add_child(new St.Label({
             text: 'LAST 7 DAYS',
             x_expand: true,
-            style_class: 'credit-pulse-kicker credit-pulse-kicker-cyan',
+            style_class: 'credit-pulse-kicker credit-pulse-kicker-violet',
         }));
         this._pulseTotal = new St.Label({text: '$—', style_class: 'credit-pulse-pulse-total'});
         pulseHeader.add_child(this._pulseTotal);
@@ -157,9 +163,9 @@ class CreditIndicator extends PanelMenu.Button {
         this._chartLabels = labels;
         this._dailyBars = [];
         this._dailyLabels = [];
-        for (let index = 0; index < 7; index++) {
+        for (let index = 0; index < CHART_DAYS; index++) {
             const slot = new St.Bin({x_expand: true, y_align: Clutter.ActorAlign.END});
-            const bar = new St.Widget({style_class: 'credit-pulse-chart-bar'});
+            const bar = new St.Widget({style_class: 'credit-pulse-chart-bar credit-pulse-chart-bar-weekday'});
             bar.set_width(34);
             bar.set_height(6);
             slot.set_child(bar);
@@ -171,6 +177,15 @@ class CreditIndicator extends PanelMenu.Button {
         }
         pulse.add_child(chart);
         pulse.add_child(labels);
+        const legend = new St.BoxLayout({style_class: 'credit-pulse-legend'});
+        [['weekday', 'Weekday'], ['weekend', 'Weekend'], ['current', 'Today']].forEach(([kind, title]) => {
+            const item = new St.BoxLayout({style_class: 'credit-pulse-legend-item'});
+            item.add_child(new St.Widget({style_class: `credit-pulse-legend-swatch credit-pulse-chart-bar-${kind}`}));
+            item.add_child(new St.Label({text: title, y_align: Clutter.ActorAlign.CENTER, style_class: 'credit-pulse-legend-label'}));
+            legend.add_child(item);
+        });
+        this._chartLegend = legend;
+        pulse.add_child(legend);
         this._pulseEmpty = new St.Label({
             text: 'More than one day of history is needed.',
             visible: false,
@@ -286,20 +301,21 @@ class CreditIndicator extends PanelMenu.Button {
         this._pulseTotal.text = this._money(total);
         this._chart.visible = hasTrend;
         this._chartLabels.visible = hasTrend;
+        this._chartLegend.visible = hasTrend;
         this._pulseEmpty.visible = !hasTrend;
-        for (let index = 0; index < 7; index++) {
+        for (let index = 0; index < CHART_DAYS; index++) {
             const day = daily[index] || {};
             const credits = Number(day.credits) || 0;
-            this._dailyBars[index].height = credits > 0
-                ? Math.round(6 + (credits / maximum) * 44)
+            const isToday = index === daily.length - 1;
+            const bar = this._dailyBars[index];
+            bar.height = credits > 0
+                ? Math.round(6 + (credits / maximum) * (CHART_HEIGHT - 6))
                 : 2;
-            this._dailyLabels[index].text = index === daily.length - 1
-                ? 'Today'
-                : this._shortDate(day.date);
-            if (index === daily.length - 1)
-                this._dailyBars[index].add_style_class_name('credit-pulse-chart-bar-current');
-            else
-                this._dailyBars[index].remove_style_class_name('credit-pulse-chart-bar-current');
+            this._dailyLabels[index].text = isToday ? 'Today' : this._weekdayInitial(day);
+            this._setBarKind(bar, isToday ? 'current' : this._isWeekend(day.date) ? 'weekend' : 'weekday');
+            this._dailyLabels[index].set_style_class_name(
+                isToday ? 'credit-pulse-chart-label credit-pulse-chart-label-current' : 'credit-pulse-chart-label'
+            );
         }
 
         const entitlement = Number(current.entitlement || 0);
@@ -309,7 +325,8 @@ class CreditIndicator extends PanelMenu.Button {
             this._remaining.text = `${this._money(remaining)} remaining`;
             this._progressTrack.visible = true;
             const fraction = Math.max(0, Math.min(1, used / entitlement));
-            this._progress.width = Math.round(350 * fraction);
+            this._progress.width = Math.round(PROGRESS_WIDTH * fraction);
+            this._setProgressTone(fraction);
         } else {
             this._allowanceText.text = 'Unavailable';
             this._remaining.text = 'GitHub did not report a monthly cap for this plan.';
@@ -322,13 +339,13 @@ class CreditIndicator extends PanelMenu.Button {
         else {
             this._error.visible = false;
             this._status.text = '● Live';
-            this._status.remove_style_class_name('credit-pulse-status-error');
+            this._status.remove_style_class_name('credit-pulse-status-stale');
         }
     }
 
     _showError(message) {
         this._status.text = '● Cached';
-        this._status.add_style_class_name('credit-pulse-status-error');
+        this._status.add_style_class_name('credit-pulse-status-stale');
         this._error.text = String(message);
         this._error.visible = true;
     }
@@ -350,11 +367,39 @@ class CreditIndicator extends PanelMenu.Button {
         return `${sign}$${parsed.toFixed(2)}`;
     }
 
-    _shortDate(value) {
-        const match = String(value || '').match(/^\d{4}-(\d{2})-(\d{2})$/);
+    _localDate(value) {
+        const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
         if (!match)
+            return null;
+        return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    }
+
+    _isWeekend(value) {
+        const date = this._localDate(value);
+        if (!date)
+            return false;
+        const weekday = date.getDay();
+        return weekday === 0 || weekday === 6;
+    }
+
+    _weekdayInitial(day) {
+        const label = String(day.label || '').trim();
+        if (label)
+            return label;
+        const date = this._localDate(day.date);
+        if (!date)
             return '·';
-        return `${Number(match[1])}/${Number(match[2])}`;
+        return date.toLocaleDateString('en-US', {weekday: 'short'}).charAt(0);
+    }
+
+    _setBarKind(bar, kind) {
+        bar.set_style_class_name(`credit-pulse-chart-bar credit-pulse-chart-bar-${kind}`);
+    }
+
+    // Mint while comfortably inside the cap, amber from 75%, red from 90%.
+    _setProgressTone(fraction) {
+        const tone = fraction >= 0.9 ? 'critical' : fraction >= 0.75 ? 'warning' : 'ok';
+        this._progress.set_style_class_name(`credit-pulse-progress credit-pulse-progress-${tone}`);
     }
 
     _resetText(epoch) {
