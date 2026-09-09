@@ -17,6 +17,15 @@ The billing-cycle projection uses local working time: Monday through Friday,
 06:00–19:00. Weekends and time outside that window add no projected usage;
 historical totals and recent-rate metrics still reflect all recorded usage.
 
+The popup's **Last 7 days** chart and JSON `metrics.delta_7d` cover today and
+the previous six local calendar dates, including weekends. Each observed
+counter increase belongs to the date it was sampled; midnight samples belong
+to the new day. The first sample is a baseline, and gaps in collection cannot
+reconstruct when spending actually happened. Counter corrections and their
+recovery do not count as new spending; a reported billing-cycle rollover starts
+a new counter. The popup keeps single-day and zero-usage charts visible and
+shows daily dollar amounts, dates, and whether data is cached.
+
 ![Copilot Usage dashboard with sample data](assets/screenshot.png)
 
 ## Visual language

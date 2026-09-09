@@ -12,7 +12,6 @@ const SCHEMA_VERSION: u32 = 1;
 
 #[derive(Debug, Clone)]
 pub(crate) struct SampleRow {
-    pub id: i64,
     pub sampled_at: i64,
     pub api_timestamp: Option<String>,
     pub credits_used: f64,
@@ -149,10 +148,10 @@ impl Store {
         Ok(rows)
     }
 
-    pub fn value_at_or_before(&self, at: i64) -> Result<Option<SampleRow>> {
+    pub fn value_before(&self, at: i64) -> Result<Option<SampleRow>> {
         self.connection
             .query_row(
-                "SELECT * FROM samples WHERE sampled_at <= ? ORDER BY sampled_at DESC, id DESC LIMIT 1",
+                "SELECT * FROM samples WHERE sampled_at < ? ORDER BY sampled_at DESC, id DESC LIMIT 1",
                 [at],
                 map_row,
             )
@@ -258,7 +257,6 @@ impl Store {
 
 fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SampleRow> {
     Ok(SampleRow {
-        id: row.get("id")?,
         sampled_at: row.get("sampled_at")?,
         api_timestamp: row.get("api_timestamp")?,
         credits_used: row.get("credits_used")?,
