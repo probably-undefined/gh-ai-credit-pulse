@@ -59,6 +59,8 @@ const TYPE_KICKER: f32 = 11.0;
 const CARD_RADIUS: f32 = 18.0;
 const INSET_RADIUS: f32 = 12.0;
 const CONTROL_RADIUS: f32 = 10.0;
+const HEADER_CONTROL_HEIGHT: f32 = 34.0;
+const HEADER_CONTROL_PADDING: [u16; 2] = [0, 12];
 const CHART_DAYS: usize = 14;
 const GAUGE_SIZE: f32 = 124.0;
 const ALLOWANCE_WARNING: f32 = 0.75;
@@ -164,11 +166,11 @@ impl Dashboard {
         let entitlement = current.entitlement.filter(|value| *value > 0.0);
 
         let status = if self.refreshing {
-            status_pill("SYNCING", MUTED)
+            status_pill("Syncing", MUTED)
         } else if self.error.is_some() {
-            status_pill("CACHED", AMBER)
+            status_pill("Cached", AMBER)
         } else {
-            status_pill("● LIVE", MINT)
+            status_pill("● Live", MINT)
         };
 
         let plan = current
@@ -198,13 +200,16 @@ impl Dashboard {
                 text(if self.refreshing {
                     "Syncing…"
                 } else {
-                    "↻  Refresh"
+                    "↻ Refresh"
                 })
                 .size(TYPE_LABEL)
                 .font(INTER_SEMIBOLD)
+                .height(Length::Fill)
+                .align_y(Vertical::Center)
             )
             .on_press_maybe((!self.refreshing).then_some(Message::Refresh))
-            .padding([9, 16])
+            .height(HEADER_CONTROL_HEIGHT)
+            .padding(HEADER_CONTROL_PADDING)
             .style(refresh_button_style),
         ]
         .spacing(12)
@@ -1083,11 +1088,13 @@ fn chip<'a>(value: String, color: Color) -> Element<'a, Message> {
 fn status_pill<'a>(value: &str, color: Color) -> Element<'a, Message> {
     container(
         text(value.to_owned())
-            .size(TYPE_KICKER)
+            .size(TYPE_LABEL)
             .font(INTER_SEMIBOLD)
             .color(color),
     )
-    .padding([6, 11])
+    .height(HEADER_CONTROL_HEIGHT)
+    .align_y(Alignment::Center)
+    .padding(HEADER_CONTROL_PADDING)
     .style(move |_| container::Style {
         background: Some(Background::Color(Color { a: 0.12, ..color })),
         border: Border {
@@ -1105,13 +1112,13 @@ fn refresh_button_style(_theme: &Theme, status: button::Status) -> button::Style
         button::Status::Hovered => (Color { a: 0.32, ..VIOLET }, TEXT),
         button::Status::Pressed => (Color { a: 0.45, ..VIOLET }, TEXT),
         button::Status::Disabled => (Color { a: 0.10, ..VIOLET }, MUTED),
-        button::Status::Active => (Color { a: 0.20, ..VIOLET }, VIOLET_LIGHT),
+        button::Status::Active => (Color { a: 0.12, ..VIOLET }, VIOLET_LIGHT),
     };
     button::Style {
         background: Some(Background::Color(background)),
         text_color,
         border: Border {
-            color: Color { a: 0.45, ..VIOLET },
+            color: Color { a: 0.38, ..VIOLET },
             width: 1.0,
             radius: CONTROL_RADIUS.into(),
         },
