@@ -489,7 +489,6 @@ mod tests {
     fn downsampling_keeps_first_and_last() {
         let rows = (0..500)
             .map(|index| SampleRow {
-                id: index,
                 sampled_at: 10_000 + index,
                 credits_used: index as f64,
                 ..sample_row(index)
@@ -560,10 +559,9 @@ mod tests {
             .timestamp()
     }
 
-    fn sample_row(id: i64) -> SampleRow {
+    fn sample_row(sampled_at: i64) -> SampleRow {
         SampleRow {
-            id,
-            sampled_at: id,
+            sampled_at,
             api_timestamp: None,
             credits_used: 0.0,
             entitlement: None,
