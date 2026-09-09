@@ -446,7 +446,15 @@ mod tests {
         let data = build_dashboard(&store, Window::SevenDays, now).unwrap();
         assert_eq!(data.metrics.delta_7d, Some(70.0));
         assert_eq!(data.metrics.delta_today, Some(10.0));
-        assert_eq!(data.daily.iter().rev().take(7).map(|day| day.credits).sum::<f64>(), 70.0);
+        assert_eq!(
+            data.daily
+                .iter()
+                .rev()
+                .take(7)
+                .map(|day| day.credits)
+                .sum::<f64>(),
+            70.0
+        );
     }
 
     #[test]
@@ -459,7 +467,10 @@ mod tests {
             insert(&store, 120.0, local_epoch(date));
             insert(&store, 130.0, local_epoch(date + chrono::Days::new(1)));
             let daily = daily_usage(&store, local_epoch(date + chrono::Days::new(1)), 3).unwrap();
-            assert_eq!(daily.iter().map(|day| day.credits).collect::<Vec<_>>(), vec![0.0, 20.0, 10.0]);
+            assert_eq!(
+                daily.iter().map(|day| day.credits).collect::<Vec<_>>(),
+                vec![0.0, 20.0, 10.0]
+            );
             assert_eq!(daily[1].date, date.to_string());
         }
     }
