@@ -149,10 +149,10 @@ impl Store {
         Ok(rows)
     }
 
-    pub fn value_at_or_before(&self, at: i64) -> Result<Option<SampleRow>> {
+    pub fn value_before(&self, at: i64) -> Result<Option<SampleRow>> {
         self.connection
             .query_row(
-                "SELECT * FROM samples WHERE sampled_at <= ? ORDER BY sampled_at DESC, id DESC LIMIT 1",
+                "SELECT * FROM samples WHERE sampled_at < ? ORDER BY sampled_at DESC, id DESC LIMIT 1",
                 [at],
                 map_row,
             )

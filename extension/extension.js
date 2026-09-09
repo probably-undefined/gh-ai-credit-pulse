@@ -1,6 +1,6 @@
 /* exported init */
 
-const {Clutter, Gio, GLib, GObject, St} = imports.gi;
+const {Clutter, Gio, GLib, GObject, Pango, St} = imports.gi;
 const Main = imports.ui.main;
 const PanelMenu = imports.ui.panelMenu;
 const PopupMenu = imports.ui.popupMenu;
@@ -9,11 +9,39 @@ const ExtensionUtils = imports.misc.extensionUtils;
 const Me = ExtensionUtils.getCurrentExtension();
 const POLL_SECONDS = 30;
 const CHART_DAYS = 7;
-// Bar chart area in px; must match .credit-pulse-chart height in stylesheet.css.
-const CHART_HEIGHT = 54;
-// Dashboard width (390) minus its own and the allowance card's padding.
-// Must match .credit-pulse-progress-track width in stylesheet.css.
-const PROGRESS_WIDTH = 330;
+// Heights are expressed in logical pixels; scale them like the CSS dimensions.
+const CHART_HEIGHT = 64;
+
+function finiteNumber(value) {
+    if (value === null || value === undefined || value === '')
+        return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+}
+
+function dateKey(date) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function chartDays(daily, now = new Date()) {
+    const byDate = new Map((Array.isArray(daily) ? daily : [])
+        .filter(day => day && typeof day.date === 'string')
+        .map(day => [day.date, day]));
+    return Array.from({length: CHART_DAYS}, (_, index) => {
+        // Calendar arithmetic, not 24-hour subtraction, also works across DST.
+        const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - CHART_DAYS + 1 + index);
+        const key = dateKey(date);
+        const credits = finiteNumber((byDate.get(key) || {}).credits);
+        return {
+            date: key,
+            label: date.toLocaleDateString('en-US', {weekday: 'short'}),
+            shortDate: date.toLocaleDateString('en-US', {month: 'short', day: 'numeric'}),
+            credits: credits === null ? null : Math.max(0, credits),
+            today: key === dateKey(now),
+            weekend: date.getDay() === 0 || date.getDay() === 6,
+        };
+    });
+}
 
 const CreditIndicator = GObject.registerClass(
 class CreditIndicator extends PanelMenu.Button {
@@ -132,10 +160,10 @@ class CreditIndicator extends PanelMenu.Button {
         dashboard.add_child(hero);
 
         const metrics = new St.BoxLayout({style_class: 'credit-pulse-metrics'});
+        metrics.get_layout_manager().homogeneous = true;
         [
             ['TODAY', '_today', '_todayDetail'],
             ['6-HOUR RATE', '_rate', '_rateDetail'],
-            ['PROJECTION', '_projection', '_projectionDetail'],
         ].forEach(([title, valueName, detailName]) => {
             const card = new St.BoxLayout({vertical: true, x_expand: true, style_class: 'credit-pulse-card'});
             card.add_child(new St.Label({text: title, style_class: 'credit-pulse-kicker'}));
@@ -147,6 +175,16 @@ class CreditIndicator extends PanelMenu.Button {
         });
         dashboard.add_child(metrics);
 
+        const forecast = new St.BoxLayout({style_class: 'credit-pulse-forecast'});
+        const forecastLabels = new St.BoxLayout({vertical: true, x_expand: true});
+        forecastLabels.add_child(new St.Label({text: 'PROJECTED AT RESET', style_class: 'credit-pulse-kicker'}));
+        this._projectionDetail = new St.Label({text: 'Mon–Fri · 06:00–19:00', style_class: 'credit-pulse-detail'});
+        forecastLabels.add_child(this._projectionDetail);
+        forecast.add_child(forecastLabels);
+        this._projection = new St.Label({text: '—', y_align: Clutter.ActorAlign.CENTER, style_class: 'credit-pulse-card-value'});
+        forecast.add_child(this._projection);
+        dashboard.add_child(forecast);
+
         const pulse = new St.BoxLayout({vertical: true, style_class: 'credit-pulse-pulse'});
         const pulseHeader = new St.BoxLayout();
         pulseHeader.add_child(new St.Label({
@@ -157,26 +195,37 @@ class CreditIndicator extends PanelMenu.Button {
         this._pulseTotal = new St.Label({text: '$—', style_class: 'credit-pulse-pulse-total'});
         pulseHeader.add_child(this._pulseTotal);
         pulse.add_child(pulseHeader);
+        this._pulseRange = new St.Label({text: 'Including today · local time', style_class: 'credit-pulse-detail'});
+        pulse.add_child(this._pulseRange);
         const chart = new St.BoxLayout({style_class: 'credit-pulse-chart'});
-        const labels = new St.BoxLayout({style_class: 'credit-pulse-chart-labels'});
+        chart.get_layout_manager().homogeneous = true;
         this._chart = chart;
-        this._chartLabels = labels;
         this._dailyBars = [];
         this._dailyLabels = [];
+        this._dailyValues = [];
+        this._dailySlots = [];
         for (let index = 0; index < CHART_DAYS; index++) {
-            const slot = new St.Bin({x_expand: true, y_align: Clutter.ActorAlign.END});
-            const bar = new St.Widget({style_class: 'credit-pulse-chart-bar credit-pulse-chart-bar-weekday'});
-            bar.set_width(22);
-            bar.set_height(6);
+            // Values, bars and labels share a column so their centers always align.
+            const column = new St.BoxLayout({vertical: true, x_expand: true, style_class: 'credit-pulse-chart-column'});
+            const value = new St.Label({text: '—', style_class: 'credit-pulse-chart-value'});
+            column.add_child(value);
+            const slot = new St.Bin({style_class: 'credit-pulse-chart-slot'});
+            const bar = new St.Widget({
+                x_align: Clutter.ActorAlign.CENTER,
+                y_align: Clutter.ActorAlign.END,
+                style_class: 'credit-pulse-chart-bar credit-pulse-chart-bar-weekday',
+            });
             slot.set_child(bar);
-            chart.add_child(slot);
-            const label = new St.Label({text: '·', x_expand: true, style_class: 'credit-pulse-chart-label'});
-            labels.add_child(label);
+            column.add_child(slot);
+            const label = new St.Label({text: '·', style_class: 'credit-pulse-chart-label'});
+            column.add_child(label);
+            chart.add_child(column);
             this._dailyBars.push(bar);
             this._dailyLabels.push(label);
+            this._dailyValues.push(value);
+            this._dailySlots.push(slot);
         }
         pulse.add_child(chart);
-        pulse.add_child(labels);
         const legend = new St.BoxLayout({style_class: 'credit-pulse-legend'});
         [['weekday', 'Weekday'], ['weekend', 'Weekend'], ['current', 'Today']].forEach(([kind, title]) => {
             const item = new St.BoxLayout({style_class: 'credit-pulse-legend-item'});
@@ -187,11 +236,13 @@ class CreditIndicator extends PanelMenu.Button {
         this._chartLegend = legend;
         pulse.add_child(legend);
         this._pulseEmpty = new St.Label({
-            text: 'More than one day of history is needed.',
+            text: 'Waiting for the first usage sample.',
             visible: false,
             style_class: 'credit-pulse-empty',
         });
         pulse.add_child(this._pulseEmpty);
+        this._pulseNote = new St.Label({text: 'Recorded changes · includes today', style_class: 'credit-pulse-detail'});
+        pulse.add_child(this._pulseNote);
         dashboard.add_child(pulse);
 
         const allowance = new St.BoxLayout({vertical: true, style_class: 'credit-pulse-allowance'});
@@ -205,7 +256,9 @@ class CreditIndicator extends PanelMenu.Button {
         allowanceHeader.add_child(this._allowanceText);
         allowance.add_child(allowanceHeader);
         this._progressTrack = new St.Bin({style_class: 'credit-pulse-progress-track'});
-        this._progress = new St.Widget({style_class: 'credit-pulse-progress'});
+        this._progress = new St.Widget({x_align: Clutter.ActorAlign.START, style_class: 'credit-pulse-progress'});
+        this._progressFraction = 0;
+        this._progressTrack.connect('notify::allocation', () => this._updateProgress());
         this._progressTrack.set_child(this._progress);
         allowance.add_child(this._progressTrack);
         this._remaining = new St.Label({text: '— remaining', style_class: 'credit-pulse-detail'});
@@ -218,6 +271,11 @@ class CreditIndicator extends PanelMenu.Button {
             style_class: 'credit-pulse-error',
         });
         dashboard.add_child(this._error);
+        [this._subtitle, this._remaining, this._error, this._projectionDetail, this._pulseNote].forEach(label => {
+            label.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
+            label.clutter_text.line_wrap = true;
+            label.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
+        });
 
         this.menu.addMenuItem(contentItem);
     }
@@ -276,10 +334,8 @@ class CreditIndicator extends PanelMenu.Button {
     _applyPayload(payload) {
         const current = payload.current || {};
         const metrics = payload.metrics || {};
-        const parsedUsed = Number(current.credits_used);
-        const used = Number.isFinite(parsedUsed) ? parsedUsed : null;
-        const parsedRate = Number(metrics.rate_per_hour);
-        const rate = Number.isFinite(parsedRate) ? parsedRate : null;
+        const used = finiteNumber(current.credits_used);
+        const rate = finiteNumber(metrics.rate_per_hour);
 
         this._panelLabel.text = rate === null
             ? this._money(used)
@@ -291,41 +347,49 @@ class CreditIndicator extends PanelMenu.Button {
         this._rate.text = `${this._money(metrics.rate_per_hour)}/h`;
         this._rateDetail.text = `${this._money(metrics.average_per_day)}/day avg`;
         this._projection.text = this._money(metrics.projected_at_reset);
-        this._projectionDetail.text = 'weekdays · 06:00–19:00';
+        this._projectionDetail.text = 'Mon–Fri · 06:00–19:00';
         this._subtitle.text = `${current.plan || 'Copilot'}  ·  ${this._resetText(current.reset_at)}`;
 
-        const daily = Array.isArray(payload.daily) ? payload.daily.slice(-7) : [];
-        const maximum = Math.max(1, ...daily.map(day => Number(day.credits) || 0));
-        const total = daily.reduce((sum, day) => sum + (Number(day.credits) || 0), 0);
-        const hasTrend = daily.filter(day => (Number(day.credits) || 0) > 0).length >= 2;
-        this._pulseTotal.text = this._money(total);
-        this._chart.visible = hasTrend;
-        this._chartLabels.visible = hasTrend;
-        this._chartLegend.visible = hasTrend;
-        this._pulseEmpty.visible = !hasTrend;
+        const daily = chartDays(payload.daily);
+        const knownDays = daily.filter(day => day.credits !== null);
+        const maximum = Math.max(1, ...knownDays.map(day => day.credits));
+        const total = knownDays.reduce((sum, day) => sum + day.credits, 0);
+        const hasHistory = knownDays.length > 0;
+        const complete = knownDays.length === CHART_DAYS;
+        this._pulseTotal.text = hasHistory ? `${complete ? '' : '≥ '}${this._money(total)}` : '—';
+        this._pulseRange.text = `${daily[0].shortDate} – ${daily[CHART_DAYS - 1].shortDate} · local time`;
+        this._chart.visible = hasHistory;
+        this._chartLegend.visible = hasHistory;
+        this._pulseEmpty.visible = !hasHistory;
+        this._pulseNote.visible = hasHistory;
+        this._pulseNote.text = payload.sample_count === 1
+            ? 'First sample saved; waiting for a change.'
+            : complete ? 'Recorded changes · includes today' : 'Partial history · — means no data';
+        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
         for (let index = 0; index < CHART_DAYS; index++) {
-            const day = daily[index] || {};
-            const credits = Number(day.credits) || 0;
-            const isToday = index === daily.length - 1;
+            const day = daily[index];
             const bar = this._dailyBars[index];
-            bar.height = credits > 0
-                ? Math.round(6 + (credits / maximum) * (CHART_HEIGHT - 6))
-                : 2;
-            this._dailyLabels[index].text = isToday ? 'Today' : this._weekdayInitial(day);
-            this._setBarKind(bar, isToday ? 'current' : this._isWeekend(day.date) ? 'weekend' : 'weekday');
+            bar.visible = day.credits !== null;
+            // Zero is a baseline; positive heights remain proportional to usage.
+            bar.height = Math.round(day.credits > 0 ? Math.max(scale, day.credits / maximum * CHART_HEIGHT * scale) : scale);
+            this._dailyValues[index].text = this._money(day.credits);
+            this._dailyLabels[index].text = day.today ? 'Today' : day.label;
+            this._dailySlots[index].accessible_name = `${day.shortDate}: ${this._money(day.credits)}`;
+            this._setBarKind(bar, day.today ? 'current' : day.weekend ? 'weekend' : 'weekday');
             this._dailyLabels[index].set_style_class_name(
-                isToday ? 'credit-pulse-chart-label credit-pulse-chart-label-current' : 'credit-pulse-chart-label'
+                day.today ? 'credit-pulse-chart-label credit-pulse-chart-label-current' : 'credit-pulse-chart-label'
             );
         }
 
-        const entitlement = Number(current.entitlement || 0);
-        const remaining = Number(current.remaining || 0);
+        const entitlement = finiteNumber(current.entitlement);
+        const remaining = finiteNumber(current.remaining);
         if (entitlement > 0) {
             this._allowanceText.text = `${this._money(used)} / ${this._money(entitlement)}`;
             this._remaining.text = `${this._money(remaining)} remaining`;
             this._progressTrack.visible = true;
-            const fraction = Math.max(0, Math.min(1, used / entitlement));
-            this._progress.width = Math.round(PROGRESS_WIDTH * fraction);
+            const fraction = Math.max(0, Math.min(1, (used || 0) / entitlement));
+            this._progressFraction = fraction;
+            this._updateProgress();
             this._setProgressTone(fraction);
         } else {
             this._allowanceText.text = 'Unavailable';
@@ -338,9 +402,18 @@ class CreditIndicator extends PanelMenu.Button {
             this._showError(payload.error || 'GitHub API error');
         else {
             this._error.visible = false;
-            this._status.text = '● Live';
-            this._status.remove_style_class_name('credit-pulse-status-stale');
+            const live = payload.status === 'ok' && payload.fresh === true && used !== null;
+            this._status.text = live ? '● Live' : used === null ? '● No data' : '● Cached';
+            if (live)
+                this._status.remove_style_class_name('credit-pulse-status-stale');
+            else
+                this._status.add_style_class_name('credit-pulse-status-stale');
         }
+    }
+
+    _updateProgress() {
+        const box = this._progressTrack.get_theme_node().get_content_box(this._progressTrack.get_allocation_box());
+        this._progress.width = Math.round(Math.max(0, box.get_width()) * this._progressFraction);
     }
 
     _showError(message) {
@@ -351,8 +424,8 @@ class CreditIndicator extends PanelMenu.Button {
     }
 
     _number(value) {
-        const parsed = Number(value);
-        if (!Number.isFinite(parsed))
+        const parsed = finiteNumber(value);
+        if (parsed === null)
             return '—';
         return parsed.toLocaleString('en-US', {maximumFractionDigits: 1});
     }
@@ -365,31 +438,6 @@ class CreditIndicator extends PanelMenu.Button {
             return '—';
         const sign = signed && parsed > 0 ? '+' : '';
         return `${sign}$${parsed.toFixed(2)}`;
-    }
-
-    _localDate(value) {
-        const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
-        if (!match)
-            return null;
-        return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-    }
-
-    _isWeekend(value) {
-        const date = this._localDate(value);
-        if (!date)
-            return false;
-        const weekday = date.getDay();
-        return weekday === 0 || weekday === 6;
-    }
-
-    _weekdayInitial(day) {
-        const label = String(day.label || '').trim();
-        if (label)
-            return label;
-        const date = this._localDate(day.date);
-        if (!date)
-            return '·';
-        return date.toLocaleDateString('en-US', {weekday: 'short'}).charAt(0);
     }
 
     _setBarKind(bar, kind) {

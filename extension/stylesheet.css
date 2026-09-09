@@ -27,7 +27,7 @@
 .credit-pulse-dashboard {
   width: 390px;
   padding: 18px;
-  spacing: 14px;
+  spacing: 10px;
   color: #f8faff;
   background-gradient-direction: vertical;
   background-gradient-start: #0f0e1e;
@@ -93,7 +93,7 @@
 
 .credit-pulse-hero-value {
   color: #ffffff;
-  font-size: 40px;
+  font-size: 36px;
   font-weight: 800;
 }
 
@@ -102,6 +102,7 @@
 }
 
 .credit-pulse-card,
+.credit-pulse-forecast,
 .credit-pulse-allowance,
 .credit-pulse-pulse {
   background-color: rgba(18, 22, 35, 0.96);
@@ -111,8 +112,8 @@
   spacing: 6px;
 }
 
-.credit-pulse-card {
-  width: 104px;
+.credit-pulse-forecast {
+  spacing: 12px;
 }
 
 .credit-pulse-card-value {
@@ -131,15 +132,28 @@
   font-weight: 700;
 }
 
-/* Height must match CHART_HEIGHT in extension.js. */
 .credit-pulse-chart {
-  height: 54px;
-  spacing: 7px;
+  spacing: 4px;
+}
+
+.credit-pulse-chart-column {
+  spacing: 6px;
+}
+
+/* Logical height must match CHART_HEIGHT in extension.js. */
+.credit-pulse-chart-slot {
+  height: 64px;
+}
+
+.credit-pulse-chart-value {
+  color: #cbd3e3;
+  font-size: 9px;
+  text-align: center;
 }
 
 .credit-pulse-chart-bar {
   width: 22px;
-  min-height: 2px;
+  min-height: 1px;
   border-radius: 6px 6px 3px 3px;
 }
 
@@ -164,14 +178,9 @@
   border: none;
 }
 
-.credit-pulse-chart-labels {
-  spacing: 7px;
-}
-
 .credit-pulse-chart-label {
-  width: 34px;
   color: #8b97ad;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   text-align: center;
 }
@@ -207,9 +216,7 @@
   text-align: center;
 }
 
-/* Width must match PROGRESS_WIDTH in extension.js: 390 - 2*18 - 2*12. */
 .credit-pulse-progress-track {
-  width: 330px;
   height: 8px;
   background-color: #202a40;
   border: 1px solid rgba(80, 102, 145, 0.30);

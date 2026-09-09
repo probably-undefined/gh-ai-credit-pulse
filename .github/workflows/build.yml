@@ -29,6 +29,8 @@ jobs:
           jq empty extension/metadata.json
           bash -n install.sh gh-ai-credit-pulse
           bash tests/wrapper-cli.sh
+          TZ=UTC node --test tests/extension.test.cjs
+          TZ=Europe/Berlin node --test tests/extension.test.cjs
           unit_dir="$(mktemp -d)"
           trap 'rm -rf "$unit_dir"' EXIT
           sed 's|@COLLECTOR@|/bin/true|g' \
@@ -59,6 +61,7 @@ jobs:
         run: |
           cargo fmt --all -- --check
           cargo test --lib --release --locked
+          TZ=Europe/Berlin cargo test --lib --release --locked collector::metrics::tests
           cargo build --release --locked
           target/release/gh-ai-credit-pulse --help >/dev/null
           target/release/gh-ai-credit-pulse --version >/dev/null

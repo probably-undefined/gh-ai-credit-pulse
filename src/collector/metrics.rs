@@ -37,6 +37,8 @@ pub(crate) fn build_dashboard(store: &Store, window: Window, now: i64) -> Result
     let elapsed_days = ((now - cycle_start) as f64 / 86_400.0).max(1.0 / 24.0);
     let average_per_day = current_used / elapsed_days;
     let (projected_at_reset, pace_delta) = projection(current_row, now, cycle_start);
+    let daily = daily_usage(store, now, 14)?;
+    let last_seven_days = daily.iter().rev().take(7).map(|day| day.credits).sum();
 
     Ok(DashboardData {
         status: "ok".to_owned(),
@@ -47,11 +49,8 @@ pub(crate) fn build_dashboard(store: &Store, window: Window, now: i64) -> Result
         metrics: Metrics {
             delta_last_sample: Some(round(delta_between(&latest), 3)),
             delta_1h: Some(round(usage_since(store, now - 60 * 60, now)?, 3)),
-            delta_today: Some(round(
-                usage_since(store, local_midnight_epoch(now), now)?,
-                3,
-            )),
-            delta_7d: Some(round(usage_since(store, now - 7 * 86_400, now)?, 3)),
+            delta_today: daily.last().map(|day| day.credits),
+            delta_7d: Some(round(last_seven_days, 3)),
             delta_30d: Some(round(usage_since(store, now - 30 * 86_400, now)?, 3)),
             rate_per_hour: Some(round(rate_per_hour.unwrap_or(0.0), 3)),
             average_per_day: Some(round(average_per_day, 3)),
@@ -59,17 +58,16 @@ pub(crate) fn build_dashboard(store: &Store, window: Window, now: i64) -> Result
             pace_delta: pace_delta.map(|value| round(value, 1)),
         },
         series: downsample(&selected_rows, 180),
-        daily: daily_usage(store, now, 14)?,
+        daily,
         ..DashboardData::default()
     })
 }
 
 fn rows_with_anchor(store: &Store, since: i64) -> Result<Vec<SampleRow>> {
     let mut rows = store.rows_since(since)?;
-    if let Some(anchor) = store.value_at_or_before(since)? {
-        if rows.first().is_none_or(|row| row.id != anchor.id) {
-            rows.insert(0, anchor);
-        }
+    // A strict predecessor preserves order even with multiple samples at `since`.
+    if let Some(anchor) = store.value_before(since)? {
+        rows.insert(0, anchor);
     }
     Ok(rows)
 }
@@ -83,17 +81,28 @@ fn usage_since(store: &Store, since: i64, now: i64) -> Result<f64> {
 }
 
 fn delta_between(rows: &[SampleRow]) -> f64 {
-    rows.windows(2)
-        .map(|pair| {
-            let previous = pair[0].credits_used;
-            let current = pair[1].credits_used;
-            if current >= previous {
-                current - previous
-            } else {
-                current.max(0.0)
-            }
-        })
-        .sum()
+    observed_deltas(rows).map(|(_, delta)| delta).sum()
+}
+
+fn observed_deltas(rows: &[SampleRow]) -> impl Iterator<Item = (&SampleRow, f64)> {
+    let mut high_water = rows.first().map_or(0.0, |row| row.credits_used);
+    rows.windows(2).map(move |pair| {
+        let previous = &pair[0];
+        let current = &pair[1];
+        // A corrected/stale counter is not evidence of a new billing cycle.
+        // Keep the high-water mark so its recovery is not counted twice either.
+        let new_cycle = match (previous.reset_at, current.reset_at) {
+            (Some(before), Some(after)) => after > before,
+            (Some(before), None) => previous.sampled_at < before && current.sampled_at >= before,
+            _ => false,
+        };
+        if new_cycle {
+            high_water = 0.0;
+        }
+        let delta = (current.credits_used - high_water).max(0.0);
+        high_water = high_water.max(current.credits_used);
+        (current, delta)
+    })
 }
 
 fn downsample(rows: &[SampleRow], max_points: usize) -> Vec<UsageSample> {
@@ -138,34 +147,41 @@ fn daily_usage(store: &Store, now: i64, days: usize) -> Result<Vec<DailyUsage>> 
         .single()
         .unwrap_or_else(Local::now);
     let today = local_now.date_naive();
-    (0..days)
+    let mut daily = (0..days)
         .rev()
         .map(|days_ago| {
             let date = today - chrono::Days::new(days_ago as u64);
-            let start = local_epoch(date);
-            let end = local_epoch(date + chrono::Days::new(1));
-            Ok(DailyUsage {
+            DailyUsage {
                 date: date.format("%Y-%m-%d").to_string(),
-                label: date
-                    .format("%a")
-                    .to_string()
-                    .chars()
-                    .next()
-                    .unwrap_or('·')
-                    .to_string(),
-                credits: round(usage_since(store, start, now.min(end))?, 3),
-            })
+                label: date.format("%a").to_string(),
+                credits: 0.0,
+            }
         })
-        .collect()
-}
-
-fn local_midnight_epoch(now: i64) -> i64 {
-    let date = Local
-        .timestamp_opt(now, 0)
-        .single()
-        .unwrap_or_else(Local::now)
-        .date_naive();
-    local_epoch(date)
+        .collect::<Vec<_>>();
+    if days == 0 {
+        return Ok(daily);
+    }
+    let first_date = today - chrono::Days::new((days - 1) as u64);
+    let rows = rows_with_anchor(store, local_epoch(first_date))?;
+    for (row, delta) in observed_deltas(&rows) {
+        if row.sampled_at > now {
+            break;
+        }
+        let Some(local) = Local.timestamp_opt(row.sampled_at, 0).single() else {
+            continue;
+        };
+        let index = (local.date_naive() - first_date).num_days();
+        if index >= 0 {
+            if let Some(day) = daily.get_mut(index as usize) {
+                // Attribute each observed change once, including midnight samples.
+                day.credits += delta;
+            }
+        }
+    }
+    for day in &mut daily {
+        day.credits = round(day.credits, 3);
+    }
+    Ok(daily)
 }
 
 fn local_epoch(date: NaiveDate) -> i64 {
@@ -357,18 +373,105 @@ mod tests {
         let rows = [
             SampleRow {
                 credits_used: 299.0,
+                reset_at: Some(2),
                 ..sample_row(1)
             },
             SampleRow {
                 credits_used: 1.0,
+                reset_at: Some(100),
                 ..sample_row(2)
             },
             SampleRow {
                 credits_used: 3.0,
+                reset_at: Some(100),
                 ..sample_row(3)
             },
         ];
         assert_eq!(delta_between(&rows), 3.0);
+    }
+
+    #[test]
+    fn counter_corrections_and_recovery_do_not_add_usage() {
+        let rows = [100.0, 95.0, 100.0, 103.0].map(|credits_used| SampleRow {
+            credits_used,
+            reset_at: Some(100),
+            ..sample_row(1)
+        });
+        assert_eq!(delta_between(&rows), 3.0);
+    }
+
+    #[test]
+    fn new_cycle_counts_usage_even_when_counter_exceeds_previous_cycle() {
+        let rows = [
+            SampleRow {
+                credits_used: 10.0,
+                reset_at: Some(2),
+                ..sample_row(1)
+            },
+            SampleRow {
+                credits_used: 20.0,
+                reset_at: Some(100),
+                ..sample_row(3)
+            },
+        ];
+        assert_eq!(delta_between(&rows), 20.0);
+    }
+
+    #[test]
+    fn midnight_samples_belong_to_the_new_day_once() {
+        let store = Store::in_memory().unwrap();
+        let midnight = local_epoch(NaiveDate::from_ymd_opt(2026, 9, 9).unwrap());
+        insert(&store, 100.0, midnight - 60);
+        insert(&store, 110.0, midnight);
+        insert(&store, 112.0, midnight);
+        insert(&store, 115.0, midnight + 60);
+        insert(&store, 999.0, midnight + 120); // Future sample must not enter the chart.
+
+        let daily = daily_usage(&store, midnight + 60, 2).unwrap();
+        assert_eq!(daily[0].credits, 0.0);
+        assert_eq!(daily[1].credits, 15.0);
+        assert_eq!(usage_since(&store, midnight, midnight + 60).unwrap(), 15.0);
+    }
+
+    #[test]
+    fn seven_day_total_matches_calendar_bars_and_today() {
+        let store = Store::in_memory().unwrap();
+        let first = NaiveDate::from_ymd_opt(2026, 9, 3).unwrap();
+        insert(&store, 50.0, local_epoch(first) - 3_600);
+        for offset in 0..7 {
+            let date = first + chrono::Days::new(offset);
+            insert(&store, 60.0 + offset as f64 * 10.0, local_epoch(date));
+        }
+        let now = local_epoch(first + chrono::Days::new(6)) + 3_600;
+        let data = build_dashboard(&store, Window::SevenDays, now).unwrap();
+        assert_eq!(data.metrics.delta_7d, Some(70.0));
+        assert_eq!(data.metrics.delta_today, Some(10.0));
+        assert_eq!(data.daily.iter().rev().take(7).map(|day| day.credits).sum::<f64>(), 70.0);
+    }
+
+    #[test]
+    fn calendar_days_survive_dst_and_missing_samples() {
+        // Run in Europe/Berlin as well as UTC: these ranges cross both DST changes.
+        for (month, day) in [(3, 29), (10, 25)] {
+            let store = Store::in_memory().unwrap();
+            let date = NaiveDate::from_ymd_opt(2026, month, day).unwrap();
+            insert(&store, 100.0, local_epoch(date - chrono::Days::new(2)));
+            insert(&store, 120.0, local_epoch(date));
+            insert(&store, 130.0, local_epoch(date + chrono::Days::new(1)));
+            let daily = daily_usage(&store, local_epoch(date + chrono::Days::new(1)), 3).unwrap();
+            assert_eq!(daily.iter().map(|day| day.credits).collect::<Vec<_>>(), vec![0.0, 20.0, 10.0]);
+            assert_eq!(daily[1].date, date.to_string());
+        }
+    }
+
+    #[test]
+    fn first_sample_is_a_baseline_not_a_day_of_spending() {
+        let store = Store::in_memory().unwrap();
+        let now = local_epoch(NaiveDate::from_ymd_opt(2026, 9, 9).unwrap());
+        insert(&store, 22_982.0, now);
+        let data = build_dashboard(&store, Window::SevenDays, now).unwrap();
+        assert_eq!(data.metrics.delta_7d, Some(0.0));
+        assert_eq!(data.metrics.delta_today, Some(0.0));
     }
 
     #[test]
